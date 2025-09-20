@@ -3,8 +3,8 @@
  * Handles cost calculation, logging, and tracking for API calls
  */
 
-import { type AgentType } from './schemas';
 import { loggerInstance as logger } from './logger';
+import { type AgentType } from './schemas';
 
 export interface TokenUsage {
   prompt_tokens: number;
@@ -160,17 +160,31 @@ export class CostTracker {
    */
   cleanup(maxEntriesPerAgent: number = 1000): void {
     let totalCleaned = 0;
+    let errorsOccurred = 0;
 
-    for (const [agent, costs] of this.costs.entries()) {
-      if (costs.length > maxEntriesPerAgent) {
-        const cleaned = costs.length - maxEntriesPerAgent;
-        this.costs.set(agent, costs.slice(-maxEntriesPerAgent));
-        totalCleaned += cleaned;
+    try {
+      for (const [agent, costs] of this.costs.entries()) {
+        try {
+          if (costs.length > maxEntriesPerAgent) {
+            const cleaned = costs.length - maxEntriesPerAgent;
+            this.costs.set(agent, costs.slice(-maxEntriesPerAgent));
+            totalCleaned += cleaned;
+          }
+        } catch (error) {
+          logger.error(`Failed to cleanup cost data for agent ${agent}:`, error instanceof Error ? error.message : String(error));
+          errorsOccurred++;
+        }
       }
-    }
 
-    if (totalCleaned > 0) {
-      logger.info('Cost tracking data cleaned', { entriesCleaned: totalCleaned });
+      if (totalCleaned > 0) {
+        logger.info('Cost tracking data cleanup completed', {
+          entriesCleaned: totalCleaned,
+          errorsOccurred,
+          remainingAgents: this.costs.size,
+        });
+      }
+    } catch (error) {
+      logger.error('Critical error during cost tracking cleanup:', error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -178,8 +192,16 @@ export class CostTracker {
    * Reset cost tracking
    */
   reset(): void {
-    this.costs.clear();
-    logger.info('Cost tracking data reset');
+    try {
+      const previousSize = this.costs.size;
+      this.costs.clear();
+      logger.info('Cost tracking data reset completed', {
+        previousEntries: previousSize,
+        currentEntries: this.costs.size,
+      });
+    } catch (error) {
+      logger.error('Critical error during cost tracking reset:', error instanceof Error ? error.message : String(error));
+    }
   }
 
   /**

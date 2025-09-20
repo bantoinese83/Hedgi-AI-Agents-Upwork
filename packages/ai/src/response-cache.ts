@@ -4,8 +4,8 @@
  */
 
 import { createHash } from 'crypto';
-import { type AgentType, type HedgiResponse } from './schemas';
 import { loggerInstance as logger } from './logger';
+import { type AgentType, type HedgiResponse } from './schemas';
 
 export interface CacheConfig {
   ttlMs: number; // Time to live in milliseconds
@@ -79,9 +79,16 @@ export class ResponseCache {
    * Clear cache
    */
   clear(): void {
-    const cacheSize = this.cache.size;
-    this.cache.clear();
-    logger.info('Response cache cleared', { entriesRemoved: cacheSize });
+    try {
+      const cacheSize = this.cache.size;
+      this.cache.clear();
+      logger.info('Response cache cleared successfully', {
+        entriesRemoved: cacheSize,
+        currentSize: this.cache.size,
+      });
+    } catch (error) {
+      logger.error('Critical error during cache clear:', error instanceof Error ? error.message : String(error));
+    }
   }
 
   /**
@@ -100,19 +107,31 @@ export class ResponseCache {
   cleanup(): void {
     const now = Date.now();
     let cleaned = 0;
+    let errorsOccurred = 0;
 
-    for (const [key, value] of this.cache.entries()) {
-      if (now - value.timestamp > this.config.ttlMs) {
-        this.cache.delete(key);
-        cleaned++;
+    try {
+      for (const [key, value] of this.cache.entries()) {
+        try {
+          if (now - value.timestamp > this.config.ttlMs) {
+            this.cache.delete(key);
+            cleaned++;
+          }
+        } catch (error) {
+          logger.error(`Failed to cleanup cache entry ${key}:`, error instanceof Error ? error.message : String(error));
+          errorsOccurred++;
+        }
       }
-    }
 
-    if (cleaned > 0) {
-      logger.debug('Cache cleanup completed', {
-        entriesCleaned: cleaned,
-        remainingEntries: this.cache.size,
-      });
+      if (cleaned > 0) {
+        logger.info('Cache cleanup completed', {
+          entriesCleaned: cleaned,
+          errorsOccurred,
+          remainingEntries: this.cache.size,
+          maxSize: this.config.maxSize,
+        });
+      }
+    } catch (error) {
+      logger.error('Critical error during cache cleanup:', error instanceof Error ? error.message : String(error));
     }
   }
 }

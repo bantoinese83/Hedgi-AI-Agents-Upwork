@@ -1,7 +1,7 @@
 "use strict";
 /**
- * Iterative request queue implementation
- * Handles concurrency control and prevents recursion
+ * Semaphore-based request queue implementation
+ * Handles concurrency control using a semaphore pattern
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RequestQueue = void 0;
@@ -10,35 +10,42 @@ class RequestQueue {
         this.queue = [];
         this.activeRequests = 0;
         this.config = config;
+        this.semaphore = config.maxConcurrentRequests;
     }
     /**
-     * Execute request with concurrency control
+     * Execute request with semaphore-based concurrency control
      */
     async executeWithConcurrencyControl(requestFn) {
         return new Promise((resolve, reject) => {
             this.queue.push({ resolve, reject, request: requestFn });
-            if (this.activeRequests < this.config.maxConcurrentRequests) {
-                this.processQueue();
-            }
+            this.processQueue();
         });
     }
     /**
-     * Process the request queue iteratively
+     * Process the request queue using semaphore pattern
      */
     async processQueue() {
-        // Iterative processing to prevent recursion
-        while (this.activeRequests < this.config.maxConcurrentRequests && this.queue.length > 0) {
-            this.activeRequests++;
-            const { resolve, reject, request } = this.queue.shift();
-            try {
-                const result = await request();
-                resolve(result);
-            }
-            catch (error) {
-                reject(error instanceof Error ? error : new Error(String(error)));
-            }
-            finally {
-                this.activeRequests--;
+        if (this.semaphore <= 0 || this.queue.length === 0) {
+            return;
+        }
+        // Acquire semaphore
+        this.semaphore--;
+        this.activeRequests++;
+        const { resolve, reject, request } = this.queue.shift();
+        try {
+            const result = await request();
+            resolve(result);
+        }
+        catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+        }
+        finally {
+            this.activeRequests--;
+            // Release semaphore
+            this.semaphore++;
+            // Continue processing if there are more requests
+            if (this.queue.length > 0) {
+                setImmediate(() => this.processQueue());
             }
         }
     }
@@ -50,6 +57,7 @@ class RequestQueue {
             queueLength: this.queue.length,
             activeRequests: this.activeRequests,
             maxConcurrentRequests: this.config.maxConcurrentRequests,
+            availableSlots: this.semaphore,
         };
     }
     /**

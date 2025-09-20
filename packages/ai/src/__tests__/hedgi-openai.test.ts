@@ -465,7 +465,7 @@ describe('HedgiOpenAI', () => {
           SMBExplainerResponseSchema,
           input
         )
-      ).rejects.toThrow('Failed to get valid response after 2 attempts');
+      ).rejects.toThrow('All models failed');
     });
   });
 

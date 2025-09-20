@@ -136,7 +136,7 @@ export class CircuitBreaker {
 
       // Atomically transition to OPEN if threshold reached
       if (this.state.failureCount >= this.config.failureThreshold &&
-          this.state.state !== CircuitState.OPEN) {
+        this.state.state !== CircuitState.OPEN) {
         this.state.state = CircuitState.OPEN;
         this.state.nextAttemptTime = now + this.config.timeoutMs;
         this.state.lastStateChange = now;
@@ -182,6 +182,28 @@ export class CircuitBreaker {
       cacheTimeout: this.config.cacheTimeout,
     };
 
-    logger.info('Circuit breaker manually reset to CLOSED state');
+    logger.info('Circuit breaker manually reset to CLOSED state - service should now accept requests');
+  }
+
+  /**
+   * Get actionable error message for circuit breaker state
+   */
+  getErrorMessage(): string {
+    const state = this.state.state;
+    const failureCount = this.state.failureCount;
+
+    switch (state) {
+      case CircuitState.OPEN:
+        return `Service is temporarily unavailable due to ${failureCount} consecutive failures. ` +
+          `The circuit breaker will automatically attempt recovery in ${Math.ceil((this.state.nextAttemptTime - Date.now()) / 1000)} seconds. ` +
+          `This usually indicates OpenAI API issues. Please check https://status.openai.com for updates.`;
+
+      case CircuitState.HALF_OPEN:
+        return `Service is in recovery mode - testing with limited requests. ` +
+          `If requests succeed, full service will be restored automatically.`;
+
+      default:
+        return 'Service is operational and ready to handle requests.';
+    }
   }
 }

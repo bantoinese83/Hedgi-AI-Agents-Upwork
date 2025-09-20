@@ -48,5 +48,9 @@ export declare class CircuitBreaker {
      * Reset circuit breaker to closed state
      */
     reset(): void;
+    /**
+     * Get actionable error message for circuit breaker state
+     */
+    getErrorMessage(): string;
 }
 //# sourceMappingURL=circuit-breaker.d.ts.map

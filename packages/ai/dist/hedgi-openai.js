@@ -5,14 +5,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HedgiOpenAI = exports.CircuitState = exports.RateLimitError = exports.TokenLimitError = exports.PayloadSizeError = exports.CircuitBreakerError = exports.HedgiOpenAIError = void 0;
 exports.createHedgiOpenAI = createHedgiOpenAI;
-const openai_1 = __importDefault(require("openai"));
 const crypto_1 = require("crypto");
-const logger_1 = require("./logger");
-const token_counter_1 = require("./token-counter");
+const openai_1 = __importDefault(require("openai"));
 const circuit_breaker_1 = require("./circuit-breaker");
+const cost_tracker_1 = require("./cost-tracker");
+const logger_1 = require("./logger");
 const request_queue_1 = require("./request-queue");
 const response_cache_1 = require("./response-cache");
-const cost_tracker_1 = require("./cost-tracker");
+const token_counter_1 = require("./token-counter");
 // Constants
 const MAX_PROMPT_TOKENS = 12000;
 const MAX_COMPLETION_TOKENS = 2000;
@@ -74,18 +74,22 @@ class RateLimitError extends HedgiOpenAIError {
     }
 }
 exports.RateLimitError = RateLimitError;
+// Re-export types from modules for backward compatibility
 var circuit_breaker_2 = require("./circuit-breaker");
 Object.defineProperty(exports, "CircuitState", { enumerable: true, get: function () { return circuit_breaker_2.CircuitState; } });
 class HedgiOpenAI {
     constructor(config) {
         // Validate API key
         if (!config.apiKey || config.apiKey.trim() === '') {
-            throw new Error('OpenAI API key is required. Please set OPENAI_API_KEY environment variable.');
+            throw new Error('OpenAI API key is required. Please set the OPENAI_API_KEY environment variable or pass it as a configuration parameter. You can get your API key from https://platform.openai.com/api-keys');
         }
         this.config = {
             model: 'gpt-4o',
             maxRetries: MAX_RETRIES,
             enableCostLogging: true,
+            fallbackModels: ['gpt-4', 'gpt-3.5-turbo'],
+            enableFallback: true,
+            fallbackTimeoutMs: 5000,
             ...config,
         };
         this.client = new openai_1.default({
@@ -239,14 +243,19 @@ class HedgiOpenAI {
         const startTime = Date.now();
         // Check circuit breaker first
         if (this.isCircuitBreakerOpen()) {
-            throw new CircuitBreakerError();
+            const errorMessage = this.circuitBreaker.getErrorMessage();
+            throw new CircuitBreakerError(errorMessage);
         }
         // Validate payload size limits
         const payloadSizeValidation = this.validatePayloadSize(payload);
         if (!payloadSizeValidation.valid) {
             const payloadString = JSON.stringify(payload);
             const sizeInMB = payloadString.length / (1024 * 1024);
-            throw new PayloadSizeError(payloadSizeValidation.error, sizeInMB, MAX_PAYLOAD_SIZE_MB);
+            const errorMessage = `Payload size limit exceeded: ${sizeInMB.toFixed(2)}MB out of ${MAX_PAYLOAD_SIZE_MB}MB maximum. ` +
+                `Please reduce the amount of data being sent. Consider: ` +
+                `1) Limiting transactions to the most material ones (1500 max), 2) Removing unnecessary fields, ` +
+                `3) Compressing data before sending, or 4) Breaking large requests into smaller batches.`;
+            throw new PayloadSizeError(errorMessage, sizeInMB, MAX_PAYLOAD_SIZE_MB);
         }
         // Check cache first
         const cachedResponse = this.getCachedResponse(agent, systemPrompt, userPrompt);
@@ -257,7 +266,11 @@ class HedgiOpenAI {
         // Validate token limits using tiktoken
         const tokenValidation = this.validateTokenLimits(systemPrompt, userPrompt);
         if (!tokenValidation.valid) {
-            throw new TokenLimitError(tokenValidation.error, tokenValidation.promptTokens, MAX_PROMPT_TOKENS);
+            const errorMessage = `Token limit exceeded: ${tokenValidation.promptTokens} tokens used out of ${MAX_PROMPT_TOKENS} maximum. ` +
+                `Please reduce the length of your prompts or transaction data. Consider: ` +
+                `1) Summarizing transaction descriptions, 2) Filtering transactions by materiality, ` +
+                `3) Breaking large requests into smaller batches, or 4) Using a model with higher token limits.`;
+            throw new TokenLimitError(errorMessage, tokenValidation.promptTokens, MAX_PROMPT_TOKENS);
         }
         let lastError = null;
         // Execute with concurrency control
@@ -348,7 +361,18 @@ class HedgiOpenAI {
                     await new Promise((resolve) => setTimeout(resolve, delay));
                 }
             }
-            // If we get here, all retries failed
+            // If we get here, all retries failed - try fallback models
+            if (this.config.enableFallback && this.config.fallbackModels && this.config.fallbackModels.length > 0) {
+                logger_1.loggerInstance.info('Primary model failed, attempting fallback models');
+                try {
+                    return await this.tryWithFallbackModels(agent, systemPrompt, userPrompt, responseSchema, payload, maxRetries);
+                }
+                catch (fallbackError) {
+                    logger_1.loggerInstance.error('All fallback models failed:', fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
+                    throw new Error(`All models failed - Primary: ${lastError?.message}, Fallbacks: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+                }
+            }
+            // If we get here, all retries and fallbacks failed
             throw new Error(`Failed to get valid response after ${maxRetries + 1} attempts: ${lastError?.message}`);
         });
     }
@@ -359,18 +383,115 @@ class HedgiOpenAI {
         return this.circuitBreaker.getState();
     }
     /**
-     * Get memory usage statistics
+     * Try fallback models when primary model fails
      */
-    getMemoryStats() {
+    async tryWithFallbackModels(agent, systemPrompt, userPrompt, responseSchema, payload, maxRetries) {
+        if (!this.config.enableFallback || !this.config.fallbackModels) {
+            throw new Error('Fallback models not enabled or not configured');
+        }
+        const modelsToTry = [this.config.model, ...this.config.fallbackModels];
+        for (const model of modelsToTry) {
+            try {
+                logger_1.loggerInstance.info(`Trying model: ${model}`);
+                // Create timeout promise
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error(`Request timeout for model ${model}`)), this.config.fallbackTimeoutMs);
+                });
+                // Race between OpenAI call and timeout
+                const response = (await Promise.race([
+                    this.client.chat.completions.create({
+                        model: model,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: userPrompt },
+                        ],
+                        response_format: { type: 'json_object' },
+                        max_tokens: MAX_COMPLETION_TOKENS,
+                        temperature: 0.1,
+                    }),
+                    timeoutPromise,
+                ]));
+                const content = response.choices[0]?.message?.content;
+                if (!content) {
+                    throw new Error(`No content in response from model ${model}`);
+                }
+                // Parse JSON response
+                let parsedResponse;
+                try {
+                    parsedResponse = JSON.parse(content);
+                }
+                catch (parseError) {
+                    throw new Error(`Failed to parse JSON from model ${model}: ${parseError}`);
+                }
+                // Validate against schema
+                const validatedResponse = responseSchema.parse(parsedResponse);
+                // Record success for circuit breaker
+                this.recordCircuitBreakerEvent(true);
+                // Calculate token usage
+                const actualPromptTokens = response.usage?.prompt_tokens || 0;
+                const actualCompletionTokens = response.usage?.completion_tokens || 0;
+                const actualTotalTokens = response.usage?.total_tokens || actualPromptTokens + actualCompletionTokens;
+                const tokenUsage = {
+                    prompt_tokens: actualPromptTokens,
+                    completion_tokens: actualCompletionTokens,
+                    total_tokens: actualTotalTokens,
+                };
+                const costInfo = this.calculateCost(tokenUsage);
+                this.logCost(agent, costInfo, payload);
+                // Return validated response with metadata
+                const processingTime = Date.now() - Date.now(); // Simplified for fallback
+                const hedgiResponse = {
+                    success: true,
+                    data: validatedResponse,
+                    metadata: {
+                        agent,
+                        timestamp: new Date().toISOString(),
+                        processing_time_ms: processingTime,
+                        token_usage: tokenUsage,
+                    },
+                };
+                logger_1.loggerInstance.info(`Successfully used fallback model: ${model}`);
+                return hedgiResponse;
+            }
+            catch (error) {
+                logger_1.loggerInstance.warn(`Model ${model} failed:`, error instanceof Error ? error.message : String(error));
+                // Record failure for circuit breaker
+                this.recordCircuitBreakerEvent(false);
+                // If this is the last model, throw the error
+                if (model === modelsToTry[modelsToTry.length - 1]) {
+                    throw error;
+                }
+                // Continue to next model
+                continue;
+            }
+        }
+        throw new Error('All fallback models failed');
+    }
+    /**
+     * Get comprehensive system statistics
+     */
+    getStats() {
         const queueStats = this.requestQueue.getStats();
         const cacheStats = this.responseCache.getStats();
         const costStats = this.costTracker.getStats();
         return {
-            activeRequests: queueStats.activeRequests,
-            queueLength: queueStats.queueLength,
-            cacheSize: cacheStats.size,
-            costTrackerSize: costStats.totalEntries,
+            circuitBreaker: this.circuitBreaker.getState(),
+            memory: {
+                activeRequests: queueStats.activeRequests,
+                queueLength: queueStats.queueLength,
+                cacheSize: cacheStats.size,
+                costTrackerSize: costStats.totalEntries,
+            },
+            cache: cacheStats,
+            costTracker: costStats,
         };
+    }
+    /**
+     * Get memory usage statistics
+     */
+    getMemoryStats() {
+        const stats = this.getStats();
+        return stats.memory;
     }
     /**
      * Check memory usage and trigger cleanup if needed
@@ -391,16 +512,36 @@ class HedgiOpenAI {
      */
     cleanupMemory() {
         try {
+            const startTime = Date.now();
+            let cacheCleaned = 0;
+            let costCleaned = 0;
             // Clean cache entries
+            const initialCacheSize = this.responseCache.getStats().size;
             this.responseCache.cleanup();
+            const finalCacheSize = this.responseCache.getStats().size;
+            cacheCleaned = initialCacheSize - finalCacheSize;
             // Clean old cost tracking data
+            const initialCostSize = this.costTracker.getStats().totalEntries;
             this.costTracker.cleanup(1000);
-            logger_1.loggerInstance.info('Memory cleanup completed', {
-                memory_pressure: this.checkMemoryPressure(),
+            const finalCostSize = this.costTracker.getStats().totalEntries;
+            costCleaned = initialCostSize - finalCostSize;
+            const processingTime = Date.now() - startTime;
+            const memoryPressure = this.checkMemoryPressure();
+            logger_1.loggerInstance.info('Memory cleanup completed successfully', {
+                processingTimeMs: processingTime,
+                cacheEntriesCleaned: cacheCleaned,
+                costEntriesCleaned: costCleaned,
+                memoryPressure: memoryPressure,
+                finalCacheSize: finalCacheSize,
+                finalCostSize: finalCostSize,
             });
         }
         catch (error) {
-            logger_1.loggerInstance.error('Memory cleanup failed:', error instanceof Error ? error.message : String(error));
+            logger_1.loggerInstance.error('Critical error during memory cleanup:', {
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+                timestamp: new Date().toISOString(),
+            });
         }
     }
     prunePayload(payload) {
@@ -429,6 +570,16 @@ class HedgiOpenAI {
      */
     resetCostTracking() {
         this.costTracker.reset();
+    }
+    /**
+     * Get fallback configuration status
+     */
+    getFallbackStatus() {
+        return {
+            enabled: this.config.enableFallback,
+            models: this.config.fallbackModels || [],
+            timeoutMs: this.config.fallbackTimeoutMs || 5000,
+        };
     }
 }
 exports.HedgiOpenAI = HedgiOpenAI;

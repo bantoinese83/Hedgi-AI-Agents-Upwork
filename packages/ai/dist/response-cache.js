@@ -59,9 +59,17 @@ class ResponseCache {
      * Clear cache
      */
     clear() {
-        const cacheSize = this.cache.size;
-        this.cache.clear();
-        logger_1.loggerInstance.info('Response cache cleared', { entriesRemoved: cacheSize });
+        try {
+            const cacheSize = this.cache.size;
+            this.cache.clear();
+            logger_1.loggerInstance.info('Response cache cleared successfully', {
+                entriesRemoved: cacheSize,
+                currentSize: this.cache.size,
+            });
+        }
+        catch (error) {
+            logger_1.loggerInstance.error('Critical error during cache clear:', error instanceof Error ? error.message : String(error));
+        }
     }
     /**
      * Get cache statistics
@@ -78,17 +86,31 @@ class ResponseCache {
     cleanup() {
         const now = Date.now();
         let cleaned = 0;
-        for (const [key, value] of this.cache.entries()) {
-            if (now - value.timestamp > this.config.ttlMs) {
-                this.cache.delete(key);
-                cleaned++;
+        let errorsOccurred = 0;
+        try {
+            for (const [key, value] of this.cache.entries()) {
+                try {
+                    if (now - value.timestamp > this.config.ttlMs) {
+                        this.cache.delete(key);
+                        cleaned++;
+                    }
+                }
+                catch (error) {
+                    logger_1.loggerInstance.error(`Failed to cleanup cache entry ${key}:`, error instanceof Error ? error.message : String(error));
+                    errorsOccurred++;
+                }
+            }
+            if (cleaned > 0) {
+                logger_1.loggerInstance.info('Cache cleanup completed', {
+                    entriesCleaned: cleaned,
+                    errorsOccurred,
+                    remainingEntries: this.cache.size,
+                    maxSize: this.config.maxSize,
+                });
             }
         }
-        if (cleaned > 0) {
-            logger_1.loggerInstance.debug('Cache cleanup completed', {
-                entriesCleaned: cleaned,
-                remainingEntries: this.cache.size,
-            });
+        catch (error) {
+            logger_1.loggerInstance.error('Critical error during cache cleanup:', error instanceof Error ? error.message : String(error));
         }
     }
 }

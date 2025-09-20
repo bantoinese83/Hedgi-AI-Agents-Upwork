@@ -1,13 +1,13 @@
+import { createHash } from 'crypto';
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { createHash } from 'crypto';
-import { loggerInstance as logger } from './logger';
-import { type AgentType, type HedgiResponse } from './schemas';
-import { tokenCounter } from './token-counter';
 import { CircuitBreaker, CircuitState } from './circuit-breaker';
+import { CostTracker, type CostInfo, type TokenUsage } from './cost-tracker';
+import { loggerInstance as logger } from './logger';
 import { RequestQueue } from './request-queue';
 import { ResponseCache } from './response-cache';
-import { CostTracker, type CostInfo, type TokenUsage } from './cost-tracker';
+import { type AgentType, type HedgiResponse } from './schemas';
+import { tokenCounter } from './token-counter';
 
 // Constants
 const MAX_PROMPT_TOKENS = 12000;
@@ -73,11 +73,40 @@ export interface HedgiOpenAIConfig {
   model?: string;
   maxRetries?: number;
   enableCostLogging?: boolean;
+  fallbackModels?: string[];
+  enableFallback?: boolean;
+  fallbackTimeoutMs?: number;
 }
 
+export interface HedgiOpenAIStats {
+  circuitBreaker: {
+    state: CircuitState;
+    failureCount: number;
+    lastFailureTime: number;
+    nextAttemptTime: number;
+  };
+  memory: {
+    activeRequests: number;
+    queueLength: number;
+    cacheSize: number;
+    costTrackerSize: number;
+  };
+  cache: {
+    size: number;
+    maxSize?: number;
+  };
+  costTracker: {
+    totalAgents: number;
+    totalEntries: number;
+  };
+}
+
+// Re-export HedgiResponse for backward compatibility
+export type { HedgiResponse };
+
 // Re-export types from modules for backward compatibility
-export { type TokenUsage, type CostInfo } from './cost-tracker';
 export { CircuitState } from './circuit-breaker';
+export { type CostInfo, type TokenUsage } from './cost-tracker';
 
 export class HedgiOpenAI {
   private client: OpenAI;
@@ -93,7 +122,7 @@ export class HedgiOpenAI {
     // Validate API key
     if (!config.apiKey || config.apiKey.trim() === '') {
       throw new Error(
-        'OpenAI API key is required. Please set OPENAI_API_KEY environment variable.'
+        'OpenAI API key is required. Please set the OPENAI_API_KEY environment variable or pass it as a configuration parameter. You can get your API key from https://platform.openai.com/api-keys'
       );
     }
 
@@ -101,6 +130,9 @@ export class HedgiOpenAI {
       model: 'gpt-4o',
       maxRetries: MAX_RETRIES,
       enableCostLogging: true,
+      fallbackModels: ['gpt-4', 'gpt-3.5-turbo'],
+      enableFallback: true,
+      fallbackTimeoutMs: 5000,
       ...config,
     };
 
@@ -310,7 +342,8 @@ export class HedgiOpenAI {
 
     // Check circuit breaker first
     if (this.isCircuitBreakerOpen()) {
-      throw new CircuitBreakerError();
+      const errorMessage = this.circuitBreaker.getErrorMessage();
+      throw new CircuitBreakerError(errorMessage);
     }
 
     // Validate payload size limits
@@ -318,7 +351,11 @@ export class HedgiOpenAI {
     if (!payloadSizeValidation.valid) {
       const payloadString = JSON.stringify(payload);
       const sizeInMB = payloadString.length / (1024 * 1024);
-      throw new PayloadSizeError(payloadSizeValidation.error!, sizeInMB, MAX_PAYLOAD_SIZE_MB);
+      const errorMessage = `Payload size limit exceeded: ${sizeInMB.toFixed(2)}MB out of ${MAX_PAYLOAD_SIZE_MB}MB maximum. ` +
+        `Please reduce the amount of data being sent. Consider: ` +
+        `1) Limiting transactions to the most material ones (1500 max), 2) Removing unnecessary fields, ` +
+        `3) Compressing data before sending, or 4) Breaking large requests into smaller batches.`;
+      throw new PayloadSizeError(errorMessage, sizeInMB, MAX_PAYLOAD_SIZE_MB);
     }
 
     // Check cache first
@@ -332,7 +369,11 @@ export class HedgiOpenAI {
     const tokenValidation = this.validateTokenLimits(systemPrompt, userPrompt);
 
     if (!tokenValidation.valid) {
-      throw new TokenLimitError(tokenValidation.error!, tokenValidation.promptTokens, MAX_PROMPT_TOKENS);
+      const errorMessage = `Token limit exceeded: ${tokenValidation.promptTokens} tokens used out of ${MAX_PROMPT_TOKENS} maximum. ` +
+        `Please reduce the length of your prompts or transaction data. Consider: ` +
+        `1) Summarizing transaction descriptions, 2) Filtering transactions by materiality, ` +
+        `3) Breaking large requests into smaller batches, or 4) Using a model with higher token limits.`;
+      throw new TokenLimitError(errorMessage, tokenValidation.promptTokens, MAX_PROMPT_TOKENS);
     }
 
     let lastError: Error | null = null;
@@ -453,7 +494,28 @@ export class HedgiOpenAI {
         }
       }
 
-      // If we get here, all retries failed
+      // If we get here, all retries failed - try fallback models
+      if (this.config.enableFallback && this.config.fallbackModels && this.config.fallbackModels.length > 0) {
+        logger.info('Primary model failed, attempting fallback models');
+
+        try {
+          return await this.tryWithFallbackModels(
+            agent,
+            systemPrompt,
+            userPrompt,
+            responseSchema,
+            payload,
+            maxRetries
+          );
+        } catch (fallbackError) {
+          logger.error('All fallback models failed:', fallbackError instanceof Error ? fallbackError.message : String(fallbackError));
+          throw new Error(
+            `All models failed - Primary: ${lastError?.message}, Fallbacks: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`
+          );
+        }
+      }
+
+      // If we get here, all retries and fallbacks failed
       throw new Error(
         `Failed to get valid response after ${maxRetries + 1} attempts: ${lastError?.message}`
       );
@@ -473,6 +535,139 @@ export class HedgiOpenAI {
   }
 
   /**
+   * Try fallback models when primary model fails
+   */
+  private async tryWithFallbackModels<T extends z.ZodTypeAny>(
+    agent: AgentType,
+    systemPrompt: string,
+    userPrompt: string,
+    responseSchema: T,
+    payload: Record<string, unknown>,
+    maxRetries: number
+  ): Promise<z.infer<T>> {
+    if (!this.config.enableFallback || !this.config.fallbackModels) {
+      throw new Error('Fallback models not enabled or not configured');
+    }
+
+    const modelsToTry = [this.config.model, ...this.config.fallbackModels];
+
+    for (const model of modelsToTry) {
+      try {
+        logger.info(`Trying model: ${model}`);
+
+        // Create timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(
+            () => reject(new Error(`Request timeout for model ${model}`)),
+            this.config.fallbackTimeoutMs
+          );
+        });
+
+        // Race between OpenAI call and timeout
+        const response = (await Promise.race([
+          this.client.chat.completions.create({
+            model: model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            response_format: { type: 'json_object' },
+            max_tokens: MAX_COMPLETION_TOKENS,
+            temperature: 0.1,
+          }),
+          timeoutPromise,
+        ])) as OpenAI.Chat.Completions.ChatCompletion;
+
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          throw new Error(`No content in response from model ${model}`);
+        }
+
+        // Parse JSON response
+        let parsedResponse: unknown;
+        try {
+          parsedResponse = JSON.parse(content);
+        } catch (parseError) {
+          throw new Error(`Failed to parse JSON from model ${model}: ${parseError}`);
+        }
+
+        // Validate against schema
+        const validatedResponse = responseSchema.parse(parsedResponse);
+
+        // Record success for circuit breaker
+        this.recordCircuitBreakerEvent(true);
+
+        // Calculate token usage
+        const actualPromptTokens = response.usage?.prompt_tokens || 0;
+        const actualCompletionTokens = response.usage?.completion_tokens || 0;
+        const actualTotalTokens = response.usage?.total_tokens || actualPromptTokens + actualCompletionTokens;
+
+        const tokenUsage: TokenUsage = {
+          prompt_tokens: actualPromptTokens,
+          completion_tokens: actualCompletionTokens,
+          total_tokens: actualTotalTokens,
+        };
+
+        const costInfo = this.calculateCost(tokenUsage);
+        this.logCost(agent, costInfo, payload);
+
+        // Return validated response with metadata
+        const processingTime = Date.now() - Date.now(); // Simplified for fallback
+        const hedgiResponse: HedgiResponse = {
+          success: true,
+          data: validatedResponse,
+          metadata: {
+            agent,
+            timestamp: new Date().toISOString(),
+            processing_time_ms: processingTime,
+            token_usage: tokenUsage,
+          },
+        };
+
+        logger.info(`Successfully used fallback model: ${model}`);
+        return hedgiResponse as z.infer<T>;
+
+      } catch (error) {
+        logger.warn(`Model ${model} failed:`, error instanceof Error ? error.message : String(error));
+
+        // Record failure for circuit breaker
+        this.recordCircuitBreakerEvent(false);
+
+        // If this is the last model, throw the error
+        if (model === modelsToTry[modelsToTry.length - 1]) {
+          throw error;
+        }
+
+        // Continue to next model
+        continue;
+      }
+    }
+
+    throw new Error('All fallback models failed');
+  }
+
+  /**
+   * Get comprehensive system statistics
+   */
+  public getStats(): HedgiOpenAIStats {
+    const queueStats = this.requestQueue.getStats();
+    const cacheStats = this.responseCache.getStats();
+    const costStats = this.costTracker.getStats();
+
+    return {
+      circuitBreaker: this.circuitBreaker.getState(),
+      memory: {
+        activeRequests: queueStats.activeRequests,
+        queueLength: queueStats.queueLength,
+        cacheSize: cacheStats.size,
+        costTrackerSize: costStats.totalEntries,
+      },
+      cache: cacheStats,
+      costTracker: costStats,
+    };
+  }
+
+  /**
    * Get memory usage statistics
    */
   public getMemoryStats(): {
@@ -481,16 +676,8 @@ export class HedgiOpenAI {
     cacheSize: number;
     costTrackerSize: number;
   } {
-    const queueStats = this.requestQueue.getStats();
-    const cacheStats = this.responseCache.getStats();
-    const costStats = this.costTracker.getStats();
-
-    return {
-      activeRequests: queueStats.activeRequests,
-      queueLength: queueStats.queueLength,
-      cacheSize: cacheStats.size,
-      costTrackerSize: costStats.totalEntries,
-    };
+    const stats = this.getStats();
+    return stats.memory;
   }
 
   /**
@@ -512,17 +699,39 @@ export class HedgiOpenAI {
    */
   public cleanupMemory(): void {
     try {
+      const startTime = Date.now();
+      let cacheCleaned = 0;
+      let costCleaned = 0;
+
       // Clean cache entries
+      const initialCacheSize = this.responseCache.getStats().size;
       this.responseCache.cleanup();
+      const finalCacheSize = this.responseCache.getStats().size;
+      cacheCleaned = initialCacheSize - finalCacheSize;
 
       // Clean old cost tracking data
+      const initialCostSize = this.costTracker.getStats().totalEntries;
       this.costTracker.cleanup(1000);
+      const finalCostSize = this.costTracker.getStats().totalEntries;
+      costCleaned = initialCostSize - finalCostSize;
 
-      logger.info('Memory cleanup completed', {
-        memory_pressure: this.checkMemoryPressure(),
+      const processingTime = Date.now() - startTime;
+      const memoryPressure = this.checkMemoryPressure();
+
+      logger.info('Memory cleanup completed successfully', {
+        processingTimeMs: processingTime,
+        cacheEntriesCleaned: cacheCleaned,
+        costEntriesCleaned: costCleaned,
+        memoryPressure: memoryPressure,
+        finalCacheSize: finalCacheSize,
+        finalCostSize: finalCostSize,
       });
     } catch (error) {
-      logger.error('Memory cleanup failed:', error instanceof Error ? error.message : String(error));
+      logger.error('Critical error during memory cleanup:', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        timestamp: new Date().toISOString(),
+      });
     }
   }
 
@@ -560,6 +769,21 @@ export class HedgiOpenAI {
    */
   public resetCostTracking(): void {
     this.costTracker.reset();
+  }
+
+  /**
+   * Get fallback configuration status
+   */
+  public getFallbackStatus(): {
+    enabled: boolean;
+    models: string[];
+    timeoutMs: number;
+  } {
+    return {
+      enabled: this.config.enableFallback,
+      models: this.config.fallbackModels || [],
+      timeoutMs: this.config.fallbackTimeoutMs || 5000,
+    };
   }
 }
 

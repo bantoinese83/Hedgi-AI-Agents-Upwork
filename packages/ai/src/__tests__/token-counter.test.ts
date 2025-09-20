@@ -20,17 +20,17 @@ describe('TokenCounter', () => {
       expect(count).toBeLessThan(10); // Should be a small number for simple text
     });
 
-    it('should count tokens for longer text', () => {
+    it('should count tokens for longer text', async () => {
       const text =
         'This is a longer piece of text that should have more tokens than the previous example.';
-      const count = counter.countTokens(text);
+      const count = await counter.countTokens(text);
 
       expect(count).toBeGreaterThan(10);
       expect(count).toBeLessThan(50);
     });
 
-    it('should handle empty text', () => {
-      const count = counter.countTokens('');
+    it('should handle empty text', async () => {
+      const count = await counter.countTokens('');
       expect(count).toBe(0);
     });
 
@@ -58,8 +58,8 @@ describe('TokenCounter', () => {
       expect(count).toBeGreaterThan(0);
     });
 
-    it('should handle empty conversation', () => {
-      const count = counter.countConversationTokensSync([]);
+    it('should handle empty conversation', async () => {
+      const count = await counter.countConversationTokens([]);
       expect(count).toBe(2); // Just the conversation overhead
     });
   });

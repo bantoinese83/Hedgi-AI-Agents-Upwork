@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { type AgentType } from './schemas';
 import { CircuitState } from './circuit-breaker';
 import { type CostInfo } from './cost-tracker';
+import { type AgentType, type HedgiResponse } from './schemas';
 export declare class HedgiOpenAIError extends Error {
     readonly code: string;
     readonly details?: Record<string, unknown> | undefined;
@@ -30,9 +30,35 @@ export interface HedgiOpenAIConfig {
     model?: string;
     maxRetries?: number;
     enableCostLogging?: boolean;
+    fallbackModels?: string[];
+    enableFallback?: boolean;
+    fallbackTimeoutMs?: number;
 }
-export { type TokenUsage, type CostInfo } from './cost-tracker';
+export interface HedgiOpenAIStats {
+    circuitBreaker: {
+        state: CircuitState;
+        failureCount: number;
+        lastFailureTime: number;
+        nextAttemptTime: number;
+    };
+    memory: {
+        activeRequests: number;
+        queueLength: number;
+        cacheSize: number;
+        costTrackerSize: number;
+    };
+    cache: {
+        size: number;
+        maxSize?: number;
+    };
+    costTracker: {
+        totalAgents: number;
+        totalEntries: number;
+    };
+}
+export type { HedgiResponse };
 export { CircuitState } from './circuit-breaker';
+export { type CostInfo, type TokenUsage } from './cost-tracker';
 export declare class HedgiOpenAI {
     private client;
     private config;
@@ -112,6 +138,14 @@ export declare class HedgiOpenAI {
         nextAttemptTime: number;
     };
     /**
+     * Try fallback models when primary model fails
+     */
+    private tryWithFallbackModels;
+    /**
+     * Get comprehensive system statistics
+     */
+    getStats(): HedgiOpenAIStats;
+    /**
      * Get memory usage statistics
      */
     getMemoryStats(): {
@@ -133,6 +167,14 @@ export declare class HedgiOpenAI {
      * Reset cost tracking
      */
     resetCostTracking(): void;
+    /**
+     * Get fallback configuration status
+     */
+    getFallbackStatus(): {
+        enabled: boolean;
+        models: string[];
+        timeoutMs: number;
+    };
 }
 export declare function createHedgiOpenAI(config: HedgiOpenAIConfig): HedgiOpenAI;
 //# sourceMappingURL=hedgi-openai.d.ts.map

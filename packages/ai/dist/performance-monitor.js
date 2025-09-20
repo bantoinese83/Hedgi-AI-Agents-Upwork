@@ -15,7 +15,7 @@ class PerformanceMonitor {
     /**
      * Log a request
      */
-    logRequest(agent, responseTime, success, error) {
+    logRequest(agent, responseTime, success, error, rateLimited) {
         const timestamp = Date.now();
         // Add to request logs
         this.requestLogs.push({
@@ -24,6 +24,7 @@ class PerformanceMonitor {
             responseTime,
             success,
             error,
+            rateLimited: rateLimited || false,
         });
         // Keep only recent logs
         if (this.requestLogs.length > this.MAX_LOGS) {
@@ -139,6 +140,50 @@ class PerformanceMonitor {
     /**
      * Reset all metrics
      */
+    /**
+     * Get rate limiting impact analysis
+     */
+    getRateLimitImpact() {
+        const rateLimitedRequests = this.requestLogs.filter(log => log.rateLimited);
+        const nonRateLimitedRequests = this.requestLogs.filter(log => !log.rateLimited);
+        const rateLimitedResponseTimes = rateLimitedRequests
+            .map(log => log.responseTime)
+            .filter(time => time !== undefined);
+        const nonRateLimitedErrors = nonRateLimitedRequests.filter(log => !log.success).length;
+        return {
+            rateLimitHits: rateLimitedRequests.length,
+            rateLimitHitRate: this.requestLogs.length > 0
+                ? (rateLimitedRequests.length / this.requestLogs.length) * 100
+                : 0,
+            averageRateLimitedResponseTime: rateLimitedResponseTimes.length > 0
+                ? rateLimitedResponseTimes.reduce((sum, time) => sum + time, 0) / rateLimitedResponseTimes.length
+                : 0,
+            nonRateLimitedErrorRate: nonRateLimitedRequests.length > 0
+                ? (nonRateLimitedErrors / nonRateLimitedRequests.length) * 100
+                : 0,
+        };
+    }
+    /**
+     * Get combined performance and rate limiting metrics
+     */
+    getCombinedMetrics() {
+        const performance = this.getAllMetrics();
+        const rateLimitImpact = this.getRateLimitImpact();
+        // Determine health status based on combined metrics
+        let healthStatus = 'healthy';
+        const totalErrorRate = this.getErrorRate('all');
+        if (totalErrorRate > 50 || rateLimitImpact.rateLimitHitRate > 50) {
+            healthStatus = 'critical';
+        }
+        else if (totalErrorRate > 20 || rateLimitImpact.rateLimitHitRate > 20) {
+            healthStatus = 'warning';
+        }
+        return {
+            performance,
+            rateLimitImpact,
+            healthStatus,
+        };
+    }
     reset() {
         this.metrics.clear();
         this.requestLogs = [];

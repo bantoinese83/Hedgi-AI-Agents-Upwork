@@ -1,6 +1,6 @@
 /**
- * Iterative request queue implementation
- * Handles concurrency control and prevents recursion
+ * Semaphore-based request queue implementation
+ * Handles concurrency control using a semaphore pattern
  */
 export interface RequestQueueItem<T> {
     resolve: (value: T) => void;
@@ -14,13 +14,14 @@ export declare class RequestQueue {
     private queue;
     private activeRequests;
     private config;
+    private semaphore;
     constructor(config: RequestQueueConfig);
     /**
-     * Execute request with concurrency control
+     * Execute request with semaphore-based concurrency control
      */
     executeWithConcurrencyControl<T>(requestFn: () => Promise<T>): Promise<T>;
     /**
-     * Process the request queue iteratively
+     * Process the request queue using semaphore pattern
      */
     private processQueue;
     /**
@@ -30,6 +31,7 @@ export declare class RequestQueue {
         queueLength: number;
         activeRequests: number;
         maxConcurrentRequests: number;
+        availableSlots: number;
     };
     /**
      * Check if queue is empty

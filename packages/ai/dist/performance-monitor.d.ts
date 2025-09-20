@@ -17,6 +17,7 @@ interface RequestLog {
     responseTime: number;
     success: boolean;
     error?: string;
+    rateLimited?: boolean;
 }
 export declare class PerformanceMonitor {
     private metrics;
@@ -25,7 +26,7 @@ export declare class PerformanceMonitor {
     /**
      * Log a request
      */
-    logRequest(agent: string, responseTime: number, success: boolean, error?: string): void;
+    logRequest(agent: string, responseTime: number, success: boolean, error?: string, rateLimited?: boolean): void;
     /**
      * Update metrics for an agent
      */
@@ -63,6 +64,23 @@ export declare class PerformanceMonitor {
     /**
      * Reset all metrics
      */
+    /**
+     * Get rate limiting impact analysis
+     */
+    getRateLimitImpact(): {
+        rateLimitHits: number;
+        rateLimitHitRate: number;
+        averageRateLimitedResponseTime: number;
+        nonRateLimitedErrorRate: number;
+    };
+    /**
+     * Get combined performance and rate limiting metrics
+     */
+    getCombinedMetrics(): {
+        performance: ReturnType<PerformanceMonitor['getAllMetrics']>;
+        rateLimitImpact: ReturnType<PerformanceMonitor['getRateLimitImpact']>;
+        healthStatus: 'healthy' | 'warning' | 'critical';
+    };
     reset(): void;
 }
 export declare const performanceMonitor: PerformanceMonitor;

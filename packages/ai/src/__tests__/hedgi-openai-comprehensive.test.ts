@@ -561,7 +561,7 @@ describe('HedgiOpenAI - Comprehensive Tests', () => {
                     input,
                     1 // Max 1 retry
                 )
-            ).rejects.toThrow('Failed to get valid response after 2 attempts');
+            ).rejects.toThrow('All models failed');
         });
 
         it('should handle missing content in response', async () => {
