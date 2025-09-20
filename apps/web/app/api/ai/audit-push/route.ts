@@ -134,7 +134,7 @@ Focus on high-impact, high-confidence issues. Provide specific transaction IDs a
 
     return NextResponse.json(response);
   } catch (error) {
-    logger.error('Audit & Push API Error:', error);
+    logger.error('Audit & Push API Error:', error); 
 
     if (error instanceof Error) {
       return NextResponse.json(
