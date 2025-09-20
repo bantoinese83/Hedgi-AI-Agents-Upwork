@@ -17,13 +17,44 @@ export interface CostInfo {
     total_cost: number;
     token_usage: TokenUsage;
 }
+declare enum CircuitState {
+    CLOSED = "closed",// Normal operation
+    OPEN = "open",// Failing, reject requests
+    HALF_OPEN = "half-open"
+}
 export declare class HedgiOpenAI {
     private client;
     private config;
     private costTracker;
     private responseCache;
     private readonly CACHE_TTL_MS;
+    private circuitBreaker;
+    private requestQueue;
+    private maxConcurrentRequests;
+    private activeRequests;
     constructor(config: HedgiOpenAIConfig);
+    /**
+     * Check circuit breaker state
+     */
+    private isCircuitBreakerOpen;
+    /**
+     * Record success/failure for circuit breaker
+     */
+    private recordCircuitBreakerEvent;
+    /**
+     * Calculate exponential backoff delay
+     */
+    private getExponentialBackoffDelay;
+    /**
+     * Execute request with concurrency control
+     */
+    private executeWithConcurrencyControl;
+    /**
+  
+    /**
+     * Process the request queue
+     */
+    private processQueue;
     /**
      * Validate token limits before making API call using tiktoken
      */
@@ -61,9 +92,27 @@ export declare class HedgiOpenAI {
      */
     callWithJSONMode<T extends z.ZodTypeAny>(agent: AgentType, systemPrompt: string, userPrompt: string, responseSchema: T, payload: Record<string, unknown>, maxRetries?: number): Promise<z.infer<T>>;
     /**
-     * Prune payload to reduce token usage
-     * Sorts transactions by materiality and limits to 1500
+     * Get circuit breaker status for monitoring
      */
+    getCircuitBreakerStatus(): {
+        state: CircuitState;
+        failureCount: number;
+        lastFailureTime: number;
+        nextAttemptTime: number;
+    };
+    /**
+     * Get memory usage statistics
+     */
+    getMemoryStats(): {
+        activeRequests: number;
+        queueLength: number;
+        cacheSize: number;
+        costTrackerSize: number;
+    };
+    /**
+     * Clean up memory by clearing old cache entries
+     */
+    cleanupMemory(): void;
     prunePayload(payload: Record<string, unknown>): Record<string, unknown>;
     /**
      * Reset cost tracking
@@ -71,4 +120,5 @@ export declare class HedgiOpenAI {
     resetCostTracking(): void;
 }
 export declare function createHedgiOpenAI(config: HedgiOpenAIConfig): HedgiOpenAI;
+export {};
 //# sourceMappingURL=hedgi-openai.d.ts.map

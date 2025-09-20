@@ -1,6 +1,6 @@
 "use strict";
 /**
- * Enhanced logger utility for the AI package using pino with pino-pretty
+ * Enhanced logger utility for the AI package using pino with Next.js compatibility
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -9,6 +9,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.loggerInstance = exports.logger = exports.Logger = exports.LogLevel = void 0;
 const pino_1 = __importDefault(require("pino"));
 const isProduction = process.env.NODE_ENV === 'production';
+// Check if we're in a Next.js environment (server-side)
+const isNextJS = typeof process !== 'undefined' &&
+    (process.env?.NEXT_RUNTIME !== undefined ||
+        process.env?.__NEXT_PRIVATE_PREBUNDLED_REACT !== undefined);
 // Log levels enum for compatibility with tests
 var LogLevel;
 (function (LogLevel) {
@@ -24,29 +28,51 @@ class Logger {
         this.consoleEnabled = true;
         this.currentLevel = options?.level ?? LogLevel.INFO;
         this.consoleEnabled = options?.enableConsole ?? true;
-        // Configure pino with pino-pretty for development
-        this.pinoLogger = (0, pino_1.default)(isProduction
-            ? {
-                level: this.getPinoLevel(this.currentLevel),
+        // Configure pino with Next.js compatible settings
+        // Use simpler configuration for Next.js to avoid worker thread issues
+        this.pinoLogger = (0, pino_1.default)(this.getPinoConfig());
+    }
+    getPinoConfig() {
+        const baseConfig = {
+            level: this.getPinoLevel(this.currentLevel),
+            formatters: {
+                level: (label) => ({ level: label }),
+            },
+            timestamp: pino_1.default.stdTimeFunctions.isoTime,
+        };
+        // In Next.js environment, avoid pino-pretty to prevent worker thread issues
+        if (isProduction || isNextJS) {
+            return {
+                ...baseConfig,
                 formatters: {
-                    level: (label) => {
-                        return { level: label };
+                    level: (label) => ({ level: label }),
+                    log: (obj) => {
+                        // Simple formatting for production/Next.js
+                        return {
+                            ...obj,
+                            time: obj.time,
+                            level: obj.level,
+                        };
                     },
                 },
-            }
-            : {
-                level: this.getPinoLevel(this.currentLevel),
-                transport: {
-                    target: 'pino-pretty',
-                    options: {
-                        colorize: true,
-                        translateTime: 'yyyy-mm-dd HH:MM:ss',
-                        ignore: 'pid,hostname',
-                        singleLine: false,
-                        hideObject: false,
-                    },
+            };
+        }
+        // Development environment with pino-pretty (but safer config)
+        return {
+            ...baseConfig,
+            transport: {
+                target: 'pino-pretty',
+                options: {
+                    colorize: true,
+                    translateTime: 'yyyy-mm-dd HH:MM:ss',
+                    ignore: 'pid,hostname',
+                    singleLine: false,
+                    hideObject: false,
+                    // Disable worker threads to avoid Next.js issues
+                    useWorkerThreads: false,
                 },
-            });
+            },
+        };
     }
     getPinoLevel(level) {
         switch (level) {
@@ -121,15 +147,20 @@ class Logger {
     }
 }
 exports.Logger = Logger;
-// Configure pino with pino-pretty for development
-const logger = (0, pino_1.default)(isProduction
+// Configure pino with Next.js compatible settings
+// Use simpler configuration for Next.js to avoid worker thread issues
+const logger = (0, pino_1.default)(isProduction || isNextJS
     ? {
         level: 'warn',
         formatters: {
-            level: (label) => {
-                return { level: label };
-            },
+            level: (label) => ({ level: label }),
+            log: (obj) => ({
+                ...obj,
+                time: obj.time,
+                level: obj.level,
+            }),
         },
+        timestamp: pino_1.default.stdTimeFunctions.isoTime,
     }
     : {
         level: 'info',
@@ -141,6 +172,8 @@ const logger = (0, pino_1.default)(isProduction
                 ignore: 'pid,hostname',
                 singleLine: false,
                 hideObject: false,
+                // Disable worker threads to avoid Next.js issues
+                useWorkerThreads: false,
             },
         },
     });

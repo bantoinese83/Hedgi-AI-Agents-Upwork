@@ -1,5 +1,5 @@
 /**
- * Enhanced logger utility for the AI package using pino with pino-pretty
+ * Enhanced logger utility for the AI package using pino with Next.js compatibility
  */
 import pino from 'pino';
 export declare enum LogLevel {
@@ -16,6 +16,7 @@ export declare class Logger {
         level?: LogLevel;
         enableConsole?: boolean;
     });
+    private getPinoConfig;
     private getPinoLevel;
     private shouldLog;
     info(message: string, ...args: unknown[]): void;

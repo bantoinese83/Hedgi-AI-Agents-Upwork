@@ -10,6 +10,11 @@ const MAX_COMPLETION_TOKENS = 2000;
 const MAX_RETRIES = 1;
 const REQUEST_TIMEOUT_MS = 30000; // 30 seconds timeout
 
+// Circuit breaker configuration
+const CIRCUIT_BREAKER_THRESHOLD = 5; // Number of failures before opening circuit
+const CIRCUIT_BREAKER_TIMEOUT_MS = 60000; // 1 minute timeout before half-open
+const EXPONENTIAL_BACKOFF_BASE_MS = 1000; // Base delay for exponential backoff
+
 // Cost tracking (approximate costs as of 2024)
 const COST_PER_1K_PROMPT_TOKENS = 0.03; // GPT-4 pricing
 const COST_PER_1K_COMPLETION_TOKENS = 0.06;
@@ -34,6 +39,20 @@ export interface CostInfo {
   token_usage: TokenUsage;
 }
 
+// Circuit breaker states
+enum CircuitState {
+  CLOSED = 'closed',      // Normal operation
+  OPEN = 'open',          // Failing, reject requests
+  HALF_OPEN = 'half-open' // Testing if service recovered
+}
+
+interface CircuitBreakerState {
+  state: CircuitState;
+  failureCount: number;
+  lastFailureTime: number;
+  nextAttemptTime: number;
+}
+
 export class HedgiOpenAI {
   private client: OpenAI;
   private config: Required<HedgiOpenAIConfig>;
@@ -43,6 +62,19 @@ export class HedgiOpenAI {
     { response: HedgiResponse; timestamp: number }
   > = new Map();
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
+
+  // Circuit breaker state
+  private circuitBreaker: CircuitBreakerState = {
+    state: CircuitState.CLOSED,
+    failureCount: 0,
+    lastFailureTime: 0,
+    nextAttemptTime: 0,
+  };
+
+  // Memory management
+  private requestQueue: Array<{ resolve: Function; reject: Function; request: any }> = [];
+  private maxConcurrentRequests = 10;
+  private activeRequests = 0;
 
   constructor(config: HedgiOpenAIConfig) {
     // Validate API key
@@ -62,6 +94,100 @@ export class HedgiOpenAI {
     this.client = new OpenAI({
       apiKey: this.config.apiKey,
     });
+
+    // Schedule memory cleanup every 10 minutes
+    setInterval(() => {
+      this.cleanupMemory();
+    }, 10 * 60 * 1000);
+  }
+
+  /**
+   * Check circuit breaker state
+   */
+  private isCircuitBreakerOpen(): boolean {
+    const now = Date.now();
+
+    switch (this.circuitBreaker.state) {
+      case CircuitState.CLOSED:
+        return false;
+
+      case CircuitState.OPEN:
+        if (now >= this.circuitBreaker.nextAttemptTime) {
+          this.circuitBreaker.state = CircuitState.HALF_OPEN;
+          return false;
+        }
+        return true;
+
+      case CircuitState.HALF_OPEN:
+        return false;
+
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Record success/failure for circuit breaker
+   */
+  private recordCircuitBreakerEvent(success: boolean): void {
+    if (success) {
+      this.circuitBreaker.failureCount = 0;
+      if (this.circuitBreaker.state === CircuitState.HALF_OPEN) {
+        this.circuitBreaker.state = CircuitState.CLOSED;
+      }
+    } else {
+      this.circuitBreaker.failureCount++;
+      this.circuitBreaker.lastFailureTime = Date.now();
+
+      if (this.circuitBreaker.failureCount >= CIRCUIT_BREAKER_THRESHOLD) {
+        this.circuitBreaker.state = CircuitState.OPEN;
+        this.circuitBreaker.nextAttemptTime = Date.now() + CIRCUIT_BREAKER_TIMEOUT_MS;
+      }
+    }
+  }
+
+  /**
+   * Calculate exponential backoff delay
+   */
+  private getExponentialBackoffDelay(attempt: number): number {
+    return EXPONENTIAL_BACKOFF_BASE_MS * Math.pow(2, attempt);
+  }
+
+  /**
+   * Execute request with concurrency control
+   */
+  private async executeWithConcurrencyControl<T>(requestFn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push({ resolve, reject, request: requestFn });
+
+      if (this.activeRequests < this.maxConcurrentRequests) {
+        this.processQueue();
+      }
+    });
+  }
+
+  /**
+
+  /**
+   * Process the request queue
+   */
+  private async processQueue(): Promise<void> {
+    if (this.activeRequests >= this.maxConcurrentRequests || this.requestQueue.length === 0) {
+      return;
+    }
+
+    this.activeRequests++;
+    const { resolve, reject, request } = this.requestQueue.shift()!;
+
+    try {
+      const result = await request();
+      resolve(result);
+    } catch (error) {
+      reject(error);
+    } finally {
+      this.activeRequests--;
+      this.processQueue(); // Process next item in queue
+    }
   }
 
   /**
@@ -244,6 +370,11 @@ export class HedgiOpenAI {
   ): Promise<z.infer<T>> {
     const startTime = Date.now();
 
+    // Check circuit breaker first
+    if (this.isCircuitBreakerOpen()) {
+      throw new Error('Circuit breaker is open - OpenAI service is currently unavailable');
+    }
+
     // Check cache first
     const cacheKey = this.generateCacheKey(agent, systemPrompt, userPrompt);
     const cachedResponse = this.getCachedResponse(cacheKey);
@@ -261,144 +392,189 @@ export class HedgiOpenAI {
 
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        // Create timeout promise
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(
-            () => reject(new Error('Request timeout')),
-            REQUEST_TIMEOUT_MS
-          );
-        });
-
-        // Race between OpenAI call and timeout
-        const response = (await Promise.race([
-          this.client.chat.completions.create({
-            model: this.config.model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            response_format: { type: 'json_object' },
-            max_tokens: MAX_COMPLETION_TOKENS,
-            temperature: 0.1, // Low temperature for consistent JSON output
-          }),
-          timeoutPromise,
-        ])) as OpenAI.Chat.Completions.ChatCompletion;
-
-        const content = response.choices[0]?.message?.content;
-        if (!content) {
-          throw new Error('No content in OpenAI response');
-        }
-
-        // Parse JSON response
-        let parsedResponse: unknown;
+    // Execute with concurrency control
+    return this.executeWithConcurrencyControl(async () => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          parsedResponse = JSON.parse(content);
-        } catch (parseError) {
-          throw new Error(`Failed to parse JSON response: ${parseError}`);
-        }
+          // Create timeout promise
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(
+              () => reject(new Error('Request timeout')),
+              REQUEST_TIMEOUT_MS
+            );
+          });
 
-        // Validate against schema
-        const validatedResponse = responseSchema.parse(parsedResponse);
+          // Race between OpenAI call and timeout
+          const response = (await Promise.race([
+            this.client.chat.completions.create({
+              model: this.config.model,
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt },
+              ],
+              response_format: { type: 'json_object' },
+              max_tokens: MAX_COMPLETION_TOKENS,
+              temperature: 0.1, // Low temperature for consistent JSON output
+            }),
+            timeoutPromise,
+          ])) as OpenAI.Chat.Completions.ChatCompletion;
 
-        // Calculate accurate token usage using tiktoken
-        const actualPromptTokens =
-          response.usage?.prompt_tokens || tokenValidation.promptTokens;
-        const actualCompletionTokens = response.usage?.completion_tokens || 0;
-        const actualTotalTokens =
-          response.usage?.total_tokens ||
-          actualPromptTokens + actualCompletionTokens;
+          const content = response.choices[0]?.message?.content;
+          if (!content) {
+            throw new Error('No content in OpenAI response');
+          }
 
-        // If OpenAI doesn't provide usage, calculate using tiktoken
-        const tokenUsage: TokenUsage = {
-          prompt_tokens: actualPromptTokens,
-          completion_tokens: actualCompletionTokens,
-          total_tokens: actualTotalTokens,
-        };
+          // Parse JSON response
+          let parsedResponse: unknown;
+          try {
+            parsedResponse = JSON.parse(content);
+          } catch (parseError) {
+            throw new Error(`Failed to parse JSON response: ${parseError}`);
+          }
 
-        // Log token breakdown for debugging
-        if (this.config.enableCostLogging) {
-          const breakdown = tokenCounter.getTokenBreakdown(
-            systemPrompt,
-            userPrompt,
-            content,
-            this.config.model
+          // Validate against schema
+          const validatedResponse = responseSchema.parse(parsedResponse);
+
+          // Record success for circuit breaker
+          this.recordCircuitBreakerEvent(true);
+
+          // Calculate accurate token usage using tiktoken
+          const actualPromptTokens =
+            response.usage?.prompt_tokens || tokenValidation.promptTokens;
+          const actualCompletionTokens = response.usage?.completion_tokens || 0;
+          const actualTotalTokens =
+            response.usage?.total_tokens ||
+            actualPromptTokens + actualCompletionTokens;
+
+          // If OpenAI doesn't provide usage, calculate using tiktoken
+          const tokenUsage: TokenUsage = {
+            prompt_tokens: actualPromptTokens,
+            completion_tokens: actualCompletionTokens,
+            total_tokens: actualTotalTokens,
+          };
+
+          // Log token breakdown for debugging
+          if (this.config.enableCostLogging) {
+            const breakdown = tokenCounter.getTokenBreakdown(
+              systemPrompt,
+              userPrompt,
+              content,
+              this.config.model
+            );
+            logger.debug(`Token breakdown for ${agent}:`, breakdown as any);
+          }
+
+          const costInfo = this.calculateCost(tokenUsage);
+          this.logCost(agent, costInfo, payload);
+
+          // Return validated response with metadata
+          const processingTime = Date.now() - startTime;
+          const hedgiResponse: HedgiResponse = {
+            success: true,
+            data: validatedResponse,
+            metadata: {
+              agent,
+              timestamp: new Date().toISOString(),
+              processing_time_ms: processingTime,
+              token_usage: tokenUsage,
+            },
+          };
+
+          // Cache the response
+          this.responseCache.set(cacheKey, {
+            response: hedgiResponse,
+            timestamp: Date.now(),
+          });
+
+          return hedgiResponse as z.infer<T>;
+        } catch (error) {
+          lastError = error as Error;
+
+          // Record failure for circuit breaker
+          this.recordCircuitBreakerEvent(false);
+
+          // If this is the last attempt or circuit breaker is triggered, throw the error
+          if (attempt === maxRetries || this.isCircuitBreakerOpen()) {
+            break;
+          }
+
+          // Log retry attempt
+          logger.warn(
+            `OpenAI call failed (attempt ${attempt + 1}/${maxRetries + 1}):`,
+            error instanceof Error ? error.message : String(error)
           );
-          logger.debug(`Token breakdown for ${agent}:`, breakdown as any);
+
+          // Wait before retry (exponential backoff)
+          const delay = this.getExponentialBackoffDelay(attempt);
+          logger.info(`Retrying in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
-
-        const costInfo = this.calculateCost(tokenUsage);
-        this.logCost(agent, costInfo, payload);
-
-        // Return validated response with metadata
-        const processingTime = Date.now() - startTime;
-        const hedgiResponse: HedgiResponse = {
-          success: true,
-          data: validatedResponse,
-          metadata: {
-            agent,
-            timestamp: new Date().toISOString(),
-            processing_time_ms: processingTime,
-            token_usage: tokenUsage,
-          },
-        };
-
-        // Cache the response
-        this.responseCache.set(cacheKey, {
-          response: hedgiResponse,
-          timestamp: Date.now(),
-        });
-
-        return hedgiResponse as z.infer<T>;
-      } catch (error) {
-        lastError = error as Error;
-
-        // If this is the last attempt, throw the error
-        if (attempt === maxRetries) {
-          break;
-        }
-
-        // Log retry attempt
-        logger.warn(
-          `OpenAI call failed (attempt ${attempt + 1}/${maxRetries + 1}):`,
-          error instanceof Error ? error.message : String(error)
-        );
-
-        // Wait before retry (exponential backoff)
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.pow(2, attempt) * 1000)
-        );
       }
-    }
 
-    // If we get here, all retries failed
-    // const processingTime = Date.now() - startTime; // Unused for now
-    // const _errorResponse: HedgiResponse = {
-    //   success: false,
-    //   data: {},
-    //   metadata: {
-    //     agent,
-    //     timestamp: new Date().toISOString(),
-    //     processing_time_ms: processingTime,
-    //     token_usage: {
-    //       prompt_tokens: tokenValidation.promptTokens,
-    //       completion_tokens: 0,
-    //       total_tokens: tokenValidation.promptTokens,
-    //     },
-    //   },
-    //   error: lastError?.message || 'Unknown error occurred',
-    // };
-
-    throw new Error(
-      `Failed to get valid response after ${maxRetries + 1} attempts: ${lastError?.message}`
-    );
+      // If we get here, all retries failed
+      throw new Error(
+        `Failed to get valid response after ${maxRetries + 1} attempts: ${lastError?.message}`
+      );
+    });
   }
 
   /**
-   * Prune payload to reduce token usage
-   * Sorts transactions by materiality and limits to 1500
+   * Get circuit breaker status for monitoring
    */
+  public getCircuitBreakerStatus(): {
+    state: CircuitState;
+    failureCount: number;
+    lastFailureTime: number;
+    nextAttemptTime: number;
+  } {
+    return { ...this.circuitBreaker };
+  }
+
+  /**
+   * Get memory usage statistics
+   */
+  public getMemoryStats(): {
+    activeRequests: number;
+    queueLength: number;
+    cacheSize: number;
+    costTrackerSize: number;
+  } {
+    return {
+      activeRequests: this.activeRequests,
+      queueLength: this.requestQueue.length,
+      cacheSize: this.responseCache.size,
+      costTrackerSize: this.costTracker.size,
+    };
+  }
+
+  /**
+   * Clean up memory by clearing old cache entries
+   */
+  public cleanupMemory(): void {
+    const now = Date.now();
+    const cacheSize = this.responseCache.size;
+    const costTrackerSize = this.costTracker.size;
+
+    // Clean cache entries older than 30 minutes
+    for (const [key, value] of this.responseCache.entries()) {
+      if (now - value.timestamp > 30 * 60 * 1000) {
+        this.responseCache.delete(key);
+      }
+    }
+
+    // Clean old cost tracking data (keep last 1000 entries per agent)
+    for (const [agent, costs] of this.costTracker.entries()) {
+      if (costs.length > 1000) {
+        this.costTracker.set(agent, costs.slice(-1000));
+      }
+    }
+
+    logger.info('Memory cleanup completed', {
+      cache_cleaned: cacheSize - this.responseCache.size,
+      cost_data_retained: costTrackerSize - this.costTracker.size,
+    });
+  }
+
   public prunePayload(
     payload: Record<string, unknown>
   ): Record<string, unknown> {

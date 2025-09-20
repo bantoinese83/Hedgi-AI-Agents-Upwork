@@ -1,7 +1,7 @@
 import { z } from 'zod';
-export declare const TransactionSchema: z.ZodObject<{
+export declare const TransactionSchema: z.ZodEffects<z.ZodObject<{
     id: z.ZodString;
-    date: z.ZodString;
+    date: z.ZodEffects<z.ZodEffects<z.ZodString, string, string>, string, string>;
     description: z.ZodString;
     amount: z.ZodNumber;
     category: z.ZodOptional<z.ZodString>;
@@ -11,19 +11,37 @@ export declare const TransactionSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     id: string;
     date: string;
+    type: "income" | "expense" | "transfer";
     description: string;
     amount: number;
     account: string;
-    type: "income" | "expense" | "transfer";
     materiality_score: number;
     category?: string | undefined;
 }, {
     id: string;
     date: string;
+    type: "income" | "expense" | "transfer";
     description: string;
     amount: number;
     account: string;
+    materiality_score: number;
+    category?: string | undefined;
+}>, {
+    id: string;
+    date: string;
     type: "income" | "expense" | "transfer";
+    description: string;
+    amount: number;
+    account: string;
+    materiality_score: number;
+    category?: string | undefined;
+}, {
+    id: string;
+    date: string;
+    type: "income" | "expense" | "transfer";
+    description: string;
+    amount: number;
+    account: string;
     materiality_score: number;
     category?: string | undefined;
 }>;
@@ -48,8 +66,8 @@ export declare const HedgiResponseSchema: z.ZodObject<{
             total_tokens: number;
         }>;
     }, "strip", z.ZodTypeAny, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -57,8 +75,8 @@ export declare const HedgiResponseSchema: z.ZodObject<{
             total_tokens: number;
         };
     }, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -71,8 +89,8 @@ export declare const HedgiResponseSchema: z.ZodObject<{
     success: boolean;
     data: Record<string, any>;
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -85,8 +103,8 @@ export declare const HedgiResponseSchema: z.ZodObject<{
     success: boolean;
     data: Record<string, any>;
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -96,7 +114,7 @@ export declare const HedgiResponseSchema: z.ZodObject<{
     };
     error?: string | undefined;
 }>;
-export declare const SMBExplainerInputSchema: z.ZodObject<{
+export declare const SMBExplainerInputSchema: z.ZodEffects<z.ZodObject<{
     business_name: z.ZodString;
     month: z.ZodString;
     year: z.ZodNumber;
@@ -136,9 +154,9 @@ export declare const SMBExplainerInputSchema: z.ZodObject<{
             percentage: number;
         }[];
     }>;
-    exemplar_transactions: z.ZodArray<z.ZodObject<{
+    exemplar_transactions: z.ZodEffects<z.ZodArray<z.ZodEffects<z.ZodObject<{
         id: z.ZodString;
-        date: z.ZodString;
+        date: z.ZodEffects<z.ZodEffects<z.ZodString, string, string>, string, string>;
         description: z.ZodString;
         amount: z.ZodNumber;
         category: z.ZodOptional<z.ZodString>;
@@ -148,22 +166,58 @@ export declare const SMBExplainerInputSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         id: string;
         date: string;
+        type: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         account: string;
-        type: "income" | "expense" | "transfer";
         materiality_score: number;
         category?: string | undefined;
     }, {
         id: string;
         date: string;
+        type: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         account: string;
-        type: "income" | "expense" | "transfer";
         materiality_score: number;
         category?: string | undefined;
-    }>, "many">;
+    }>, {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }, {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }>, "many">, {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[], {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[]>;
     previous_month_comparison: z.ZodObject<{
         income_change: z.ZodNumber;
         expense_change: z.ZodNumber;
@@ -194,10 +248,10 @@ export declare const SMBExplainerInputSchema: z.ZodObject<{
     exemplar_transactions: {
         id: string;
         date: string;
+        type: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         account: string;
-        type: "income" | "expense" | "transfer";
         materiality_score: number;
         category?: string | undefined;
     }[];
@@ -223,10 +277,68 @@ export declare const SMBExplainerInputSchema: z.ZodObject<{
     exemplar_transactions: {
         id: string;
         date: string;
+        type: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[];
+    previous_month_comparison: {
+        income_change: number;
+        expense_change: number;
+        net_change: number;
+    };
+}>, {
+    business_name: string;
+    month: string;
+    year: number;
+    rollups: {
+        total_income: number;
+        total_expenses: number;
+        net_income: number;
+        top_categories: {
+            amount: number;
+            category: string;
+            percentage: number;
+        }[];
+    };
+    exemplar_transactions: {
+        id: string;
+        date: string;
         type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[];
+    previous_month_comparison: {
+        income_change: number;
+        expense_change: number;
+        net_change: number;
+    };
+}, {
+    business_name: string;
+    month: string;
+    year: number;
+    rollups: {
+        total_income: number;
+        total_expenses: number;
+        net_income: number;
+        top_categories: {
+            amount: number;
+            category: string;
+            percentage: number;
+        }[];
+    };
+    exemplar_transactions: {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
         materiality_score: number;
         category?: string | undefined;
     }[];
@@ -256,8 +368,8 @@ export declare const SMBExplainerResponseSchema: z.ZodObject<{
             total_tokens: number;
         }>;
     }, "strip", z.ZodTypeAny, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -265,8 +377,8 @@ export declare const SMBExplainerResponseSchema: z.ZodObject<{
             total_tokens: number;
         };
     }, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -301,8 +413,8 @@ export declare const SMBExplainerResponseSchema: z.ZodObject<{
         financial_health_score: number;
     };
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -320,8 +432,8 @@ export declare const SMBExplainerResponseSchema: z.ZodObject<{
         financial_health_score: number;
     };
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -331,10 +443,10 @@ export declare const SMBExplainerResponseSchema: z.ZodObject<{
     };
     error?: string | undefined;
 }>;
-export declare const AuditPushInputSchema: z.ZodObject<{
-    transactions: z.ZodArray<z.ZodObject<{
+export declare const AuditPushInputSchema: z.ZodEffects<z.ZodObject<{
+    transactions: z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodEffects<z.ZodObject<{
         id: z.ZodString;
-        date: z.ZodString;
+        date: z.ZodEffects<z.ZodEffects<z.ZodString, string, string>, string, string>;
         description: z.ZodString;
         amount: z.ZodNumber;
         category: z.ZodOptional<z.ZodString>;
@@ -344,22 +456,76 @@ export declare const AuditPushInputSchema: z.ZodObject<{
     }, "strip", z.ZodTypeAny, {
         id: string;
         date: string;
+        type: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         account: string;
-        type: "income" | "expense" | "transfer";
         materiality_score: number;
         category?: string | undefined;
     }, {
         id: string;
         date: string;
+        type: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         account: string;
-        type: "income" | "expense" | "transfer";
         materiality_score: number;
         category?: string | undefined;
-    }>, "many">;
+    }>, {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }, {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }>, "many">, {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[], {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[]>, {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[], {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[]>;
     existing_rules: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         pattern: z.ZodString;
@@ -382,10 +548,10 @@ export declare const AuditPushInputSchema: z.ZodObject<{
     transactions: {
         id: string;
         date: string;
+        type: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         account: string;
-        type: "income" | "expense" | "transfer";
         materiality_score: number;
         category?: string | undefined;
     }[];
@@ -401,10 +567,48 @@ export declare const AuditPushInputSchema: z.ZodObject<{
     transactions: {
         id: string;
         date: string;
+        type: "income" | "expense" | "transfer";
         description: string;
         amount: number;
         account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[];
+    existing_rules: {
+        id: string;
+        category: string;
+        pattern: string;
+        confidence: number;
+    }[];
+    duplicate_threshold?: number | undefined;
+    uncategorized_threshold?: number | undefined;
+}>, {
+    transactions: {
+        id: string;
+        date: string;
         type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
+        materiality_score: number;
+        category?: string | undefined;
+    }[];
+    existing_rules: {
+        id: string;
+        category: string;
+        pattern: string;
+        confidence: number;
+    }[];
+    duplicate_threshold: number;
+    uncategorized_threshold: number;
+}, {
+    transactions: {
+        id: string;
+        date: string;
+        type: "income" | "expense" | "transfer";
+        description: string;
+        amount: number;
+        account: string;
         materiality_score: number;
         category?: string | undefined;
     }[];
@@ -437,8 +641,8 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
             total_tokens: number;
         }>;
     }, "strip", z.ZodTypeAny, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -446,8 +650,8 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
             total_tokens: number;
         };
     }, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -465,14 +669,14 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
             description: z.ZodString;
             suggested_fix: z.ZodString;
         }, "strip", z.ZodTypeAny, {
-            description: string;
             type: "uncategorized" | "misclassified" | "duplicate";
+            description: string;
             confidence: number;
             transaction_ids: string[];
             suggested_fix: string;
         }, {
-            description: string;
             type: "uncategorized" | "misclassified" | "duplicate";
+            description: string;
             confidence: number;
             transaction_ids: string[];
             suggested_fix: string;
@@ -542,8 +746,8 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
         total_impact: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
         issues: {
-            description: string;
             type: "uncategorized" | "misclassified" | "duplicate";
+            description: string;
             confidence: number;
             transaction_ids: string[];
             suggested_fix: string;
@@ -569,8 +773,8 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
         total_impact: number;
     }, {
         issues: {
-            description: string;
             type: "uncategorized" | "misclassified" | "duplicate";
+            description: string;
             confidence: number;
             transaction_ids: string[];
             suggested_fix: string;
@@ -599,8 +803,8 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
     success: boolean;
     data: {
         issues: {
-            description: string;
             type: "uncategorized" | "misclassified" | "duplicate";
+            description: string;
             confidence: number;
             transaction_ids: string[];
             suggested_fix: string;
@@ -626,8 +830,8 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
         total_impact: number;
     };
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -640,8 +844,8 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
     success: boolean;
     data: {
         issues: {
-            description: string;
             type: "uncategorized" | "misclassified" | "duplicate";
+            description: string;
             confidence: number;
             transaction_ids: string[];
             suggested_fix: string;
@@ -667,8 +871,8 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
         total_impact: number;
     };
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -679,13 +883,13 @@ export declare const AuditPushResponseSchema: z.ZodObject<{
     error?: string | undefined;
 }>;
 export declare const SavingsFinderInputSchema: z.ZodObject<{
-    subscriptions: z.ZodArray<z.ZodObject<{
+    subscriptions: z.ZodEffects<z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         name: z.ZodString;
         amount: z.ZodNumber;
         frequency: z.ZodEnum<["monthly", "quarterly", "annually"]>;
         category: z.ZodString;
-        last_used: z.ZodOptional<z.ZodString>;
+        last_used: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
         auto_renew: z.ZodBoolean;
     }, "strip", z.ZodTypeAny, {
         id: string;
@@ -703,10 +907,26 @@ export declare const SavingsFinderInputSchema: z.ZodObject<{
         frequency: "monthly" | "quarterly" | "annually";
         auto_renew: boolean;
         last_used?: string | undefined;
-    }>, "many">;
+    }>, "many">, {
+        id: string;
+        amount: number;
+        category: string;
+        name: string;
+        frequency: "monthly" | "quarterly" | "annually";
+        auto_renew: boolean;
+        last_used?: string | undefined;
+    }[], {
+        id: string;
+        amount: number;
+        category: string;
+        name: string;
+        frequency: "monthly" | "quarterly" | "annually";
+        auto_renew: boolean;
+        last_used?: string | undefined;
+    }[]>;
     historical_pricing: z.ZodArray<z.ZodObject<{
         subscription_id: z.ZodString;
-        date: z.ZodString;
+        date: z.ZodEffects<z.ZodString, string, string>;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
         date: string;
@@ -719,7 +939,7 @@ export declare const SavingsFinderInputSchema: z.ZodObject<{
     }>, "many">;
     usage_data: z.ZodArray<z.ZodObject<{
         subscription_id: z.ZodString;
-        last_activity: z.ZodString;
+        last_activity: z.ZodEffects<z.ZodString, string, string>;
         usage_frequency: z.ZodEnum<["daily", "weekly", "monthly", "rarely", "never"]>;
     }, "strip", z.ZodTypeAny, {
         subscription_id: string;
@@ -791,8 +1011,8 @@ export declare const SavingsFinderResponseSchema: z.ZodObject<{
             total_tokens: number;
         }>;
     }, "strip", z.ZodTypeAny, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -800,8 +1020,8 @@ export declare const SavingsFinderResponseSchema: z.ZodObject<{
             total_tokens: number;
         };
     }, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -882,8 +1102,8 @@ export declare const SavingsFinderResponseSchema: z.ZodObject<{
         action_items: string[];
     };
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -909,8 +1129,8 @@ export declare const SavingsFinderResponseSchema: z.ZodObject<{
         action_items: string[];
     };
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -920,20 +1140,26 @@ export declare const SavingsFinderResponseSchema: z.ZodObject<{
     };
     error?: string | undefined;
 }>;
-export declare const CashFlowRunwayInputSchema: z.ZodObject<{
+export declare const CashFlowRunwayInputSchema: z.ZodEffects<z.ZodObject<{
     current_cash: z.ZodNumber;
-    time_period: z.ZodObject<{
-        start_date: z.ZodString;
-        end_date: z.ZodString;
+    time_period: z.ZodEffects<z.ZodObject<{
+        start_date: z.ZodEffects<z.ZodString, string, string>;
+        end_date: z.ZodEffects<z.ZodString, string, string>;
     }, "strip", z.ZodTypeAny, {
         start_date: string;
         end_date: string;
     }, {
         start_date: string;
         end_date: string;
+    }>, {
+        start_date: string;
+        end_date: string;
+    }, {
+        start_date: string;
+        end_date: string;
     }>;
-    cash_flows: z.ZodArray<z.ZodObject<{
-        date: z.ZodString;
+    cash_flows: z.ZodEffects<z.ZodArray<z.ZodObject<{
+        date: z.ZodEffects<z.ZodString, string, string>;
         type: z.ZodEnum<["inflow", "outflow"]>;
         amount: z.ZodNumber;
         category: z.ZodString;
@@ -941,24 +1167,38 @@ export declare const CashFlowRunwayInputSchema: z.ZodObject<{
         confidence: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
         date: string;
+        type: "inflow" | "outflow";
         description: string;
         amount: number;
         category: string;
-        type: "inflow" | "outflow";
         confidence: number;
     }, {
         date: string;
+        type: "inflow" | "outflow";
         description: string;
         amount: number;
         category: string;
-        type: "inflow" | "outflow";
         confidence: number;
-    }>, "many">;
+    }>, "many">, {
+        date: string;
+        type: "inflow" | "outflow";
+        description: string;
+        amount: number;
+        category: string;
+        confidence: number;
+    }[], {
+        date: string;
+        type: "inflow" | "outflow";
+        description: string;
+        amount: number;
+        category: string;
+        confidence: number;
+    }[]>;
     recurring_patterns: z.ZodArray<z.ZodObject<{
         category: z.ZodString;
         amount: z.ZodNumber;
         frequency: z.ZodEnum<["daily", "weekly", "monthly", "quarterly", "annually"]>;
-        next_occurrence: z.ZodString;
+        next_occurrence: z.ZodEffects<z.ZodString, string, string>;
     }, "strip", z.ZodTypeAny, {
         amount: number;
         category: string;
@@ -978,10 +1218,10 @@ export declare const CashFlowRunwayInputSchema: z.ZodObject<{
     };
     cash_flows: {
         date: string;
+        type: "inflow" | "outflow";
         description: string;
         amount: number;
         category: string;
-        type: "inflow" | "outflow";
         confidence: number;
     }[];
     recurring_patterns: {
@@ -998,10 +1238,50 @@ export declare const CashFlowRunwayInputSchema: z.ZodObject<{
     };
     cash_flows: {
         date: string;
+        type: "inflow" | "outflow";
         description: string;
         amount: number;
         category: string;
+        confidence: number;
+    }[];
+    recurring_patterns: {
+        amount: number;
+        category: string;
+        frequency: "monthly" | "quarterly" | "annually" | "daily" | "weekly";
+        next_occurrence: string;
+    }[];
+}>, {
+    current_cash: number;
+    time_period: {
+        start_date: string;
+        end_date: string;
+    };
+    cash_flows: {
+        date: string;
         type: "inflow" | "outflow";
+        description: string;
+        amount: number;
+        category: string;
+        confidence: number;
+    }[];
+    recurring_patterns: {
+        amount: number;
+        category: string;
+        frequency: "monthly" | "quarterly" | "annually" | "daily" | "weekly";
+        next_occurrence: string;
+    }[];
+}, {
+    current_cash: number;
+    time_period: {
+        start_date: string;
+        end_date: string;
+    };
+    cash_flows: {
+        date: string;
+        type: "inflow" | "outflow";
+        description: string;
+        amount: number;
+        category: string;
         confidence: number;
     }[];
     recurring_patterns: {
@@ -1031,8 +1311,8 @@ export declare const CashFlowRunwayResponseSchema: z.ZodObject<{
             total_tokens: number;
         }>;
     }, "strip", z.ZodTypeAny, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -1040,8 +1320,8 @@ export declare const CashFlowRunwayResponseSchema: z.ZodObject<{
             total_tokens: number;
         };
     }, {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -1172,8 +1452,8 @@ export declare const CashFlowRunwayResponseSchema: z.ZodObject<{
         risk_factors: string[];
     };
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -1208,8 +1488,8 @@ export declare const CashFlowRunwayResponseSchema: z.ZodObject<{
         risk_factors: string[];
     };
     metadata: {
-        agent: string;
         timestamp: string;
+        agent: string;
         processing_time_ms: number;
         token_usage: {
             prompt_tokens: number;
@@ -1232,7 +1512,7 @@ export type CashFlowRunwayResponse = z.infer<typeof CashFlowRunwayResponseSchema
 export type AgentType = 'smb-explainer' | 'audit-push' | 'savings-finder' | 'cash-flow-runway';
 export declare const AgentSchemas: {
     readonly 'smb-explainer': {
-        readonly input: z.ZodObject<{
+        readonly input: z.ZodEffects<z.ZodObject<{
             business_name: z.ZodString;
             month: z.ZodString;
             year: z.ZodNumber;
@@ -1272,9 +1552,9 @@ export declare const AgentSchemas: {
                     percentage: number;
                 }[];
             }>;
-            exemplar_transactions: z.ZodArray<z.ZodObject<{
+            exemplar_transactions: z.ZodEffects<z.ZodArray<z.ZodEffects<z.ZodObject<{
                 id: z.ZodString;
-                date: z.ZodString;
+                date: z.ZodEffects<z.ZodEffects<z.ZodString, string, string>, string, string>;
                 description: z.ZodString;
                 amount: z.ZodNumber;
                 category: z.ZodOptional<z.ZodString>;
@@ -1284,22 +1564,58 @@ export declare const AgentSchemas: {
             }, "strip", z.ZodTypeAny, {
                 id: string;
                 date: string;
+                type: "income" | "expense" | "transfer";
                 description: string;
                 amount: number;
                 account: string;
-                type: "income" | "expense" | "transfer";
                 materiality_score: number;
                 category?: string | undefined;
             }, {
                 id: string;
                 date: string;
+                type: "income" | "expense" | "transfer";
                 description: string;
                 amount: number;
                 account: string;
-                type: "income" | "expense" | "transfer";
                 materiality_score: number;
                 category?: string | undefined;
-            }>, "many">;
+            }>, {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }, {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }>, "many">, {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[], {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[]>;
             previous_month_comparison: z.ZodObject<{
                 income_change: z.ZodNumber;
                 expense_change: z.ZodNumber;
@@ -1330,10 +1646,10 @@ export declare const AgentSchemas: {
             exemplar_transactions: {
                 id: string;
                 date: string;
+                type: "income" | "expense" | "transfer";
                 description: string;
                 amount: number;
                 account: string;
-                type: "income" | "expense" | "transfer";
                 materiality_score: number;
                 category?: string | undefined;
             }[];
@@ -1359,10 +1675,68 @@ export declare const AgentSchemas: {
             exemplar_transactions: {
                 id: string;
                 date: string;
+                type: "income" | "expense" | "transfer";
                 description: string;
                 amount: number;
                 account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[];
+            previous_month_comparison: {
+                income_change: number;
+                expense_change: number;
+                net_change: number;
+            };
+        }>, {
+            business_name: string;
+            month: string;
+            year: number;
+            rollups: {
+                total_income: number;
+                total_expenses: number;
+                net_income: number;
+                top_categories: {
+                    amount: number;
+                    category: string;
+                    percentage: number;
+                }[];
+            };
+            exemplar_transactions: {
+                id: string;
+                date: string;
                 type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[];
+            previous_month_comparison: {
+                income_change: number;
+                expense_change: number;
+                net_change: number;
+            };
+        }, {
+            business_name: string;
+            month: string;
+            year: number;
+            rollups: {
+                total_income: number;
+                total_expenses: number;
+                net_income: number;
+                top_categories: {
+                    amount: number;
+                    category: string;
+                    percentage: number;
+                }[];
+            };
+            exemplar_transactions: {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
                 materiality_score: number;
                 category?: string | undefined;
             }[];
@@ -1392,8 +1766,8 @@ export declare const AgentSchemas: {
                     total_tokens: number;
                 }>;
             }, "strip", z.ZodTypeAny, {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1401,8 +1775,8 @@ export declare const AgentSchemas: {
                     total_tokens: number;
                 };
             }, {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1437,8 +1811,8 @@ export declare const AgentSchemas: {
                 financial_health_score: number;
             };
             metadata: {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1456,8 +1830,8 @@ export declare const AgentSchemas: {
                 financial_health_score: number;
             };
             metadata: {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1469,10 +1843,10 @@ export declare const AgentSchemas: {
         }>;
     };
     readonly 'audit-push': {
-        readonly input: z.ZodObject<{
-            transactions: z.ZodArray<z.ZodObject<{
+        readonly input: z.ZodEffects<z.ZodObject<{
+            transactions: z.ZodEffects<z.ZodEffects<z.ZodArray<z.ZodEffects<z.ZodObject<{
                 id: z.ZodString;
-                date: z.ZodString;
+                date: z.ZodEffects<z.ZodEffects<z.ZodString, string, string>, string, string>;
                 description: z.ZodString;
                 amount: z.ZodNumber;
                 category: z.ZodOptional<z.ZodString>;
@@ -1482,22 +1856,76 @@ export declare const AgentSchemas: {
             }, "strip", z.ZodTypeAny, {
                 id: string;
                 date: string;
+                type: "income" | "expense" | "transfer";
                 description: string;
                 amount: number;
                 account: string;
-                type: "income" | "expense" | "transfer";
                 materiality_score: number;
                 category?: string | undefined;
             }, {
                 id: string;
                 date: string;
+                type: "income" | "expense" | "transfer";
                 description: string;
                 amount: number;
                 account: string;
-                type: "income" | "expense" | "transfer";
                 materiality_score: number;
                 category?: string | undefined;
-            }>, "many">;
+            }>, {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }, {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }>, "many">, {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[], {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[]>, {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[], {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[]>;
             existing_rules: z.ZodArray<z.ZodObject<{
                 id: z.ZodString;
                 pattern: z.ZodString;
@@ -1520,10 +1948,10 @@ export declare const AgentSchemas: {
             transactions: {
                 id: string;
                 date: string;
+                type: "income" | "expense" | "transfer";
                 description: string;
                 amount: number;
                 account: string;
-                type: "income" | "expense" | "transfer";
                 materiality_score: number;
                 category?: string | undefined;
             }[];
@@ -1539,10 +1967,48 @@ export declare const AgentSchemas: {
             transactions: {
                 id: string;
                 date: string;
+                type: "income" | "expense" | "transfer";
                 description: string;
                 amount: number;
                 account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[];
+            existing_rules: {
+                id: string;
+                category: string;
+                pattern: string;
+                confidence: number;
+            }[];
+            duplicate_threshold?: number | undefined;
+            uncategorized_threshold?: number | undefined;
+        }>, {
+            transactions: {
+                id: string;
+                date: string;
                 type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
+                materiality_score: number;
+                category?: string | undefined;
+            }[];
+            existing_rules: {
+                id: string;
+                category: string;
+                pattern: string;
+                confidence: number;
+            }[];
+            duplicate_threshold: number;
+            uncategorized_threshold: number;
+        }, {
+            transactions: {
+                id: string;
+                date: string;
+                type: "income" | "expense" | "transfer";
+                description: string;
+                amount: number;
+                account: string;
                 materiality_score: number;
                 category?: string | undefined;
             }[];
@@ -1575,8 +2041,8 @@ export declare const AgentSchemas: {
                     total_tokens: number;
                 }>;
             }, "strip", z.ZodTypeAny, {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1584,8 +2050,8 @@ export declare const AgentSchemas: {
                     total_tokens: number;
                 };
             }, {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1603,14 +2069,14 @@ export declare const AgentSchemas: {
                     description: z.ZodString;
                     suggested_fix: z.ZodString;
                 }, "strip", z.ZodTypeAny, {
-                    description: string;
                     type: "uncategorized" | "misclassified" | "duplicate";
+                    description: string;
                     confidence: number;
                     transaction_ids: string[];
                     suggested_fix: string;
                 }, {
-                    description: string;
                     type: "uncategorized" | "misclassified" | "duplicate";
+                    description: string;
                     confidence: number;
                     transaction_ids: string[];
                     suggested_fix: string;
@@ -1680,8 +2146,8 @@ export declare const AgentSchemas: {
                 total_impact: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 issues: {
-                    description: string;
                     type: "uncategorized" | "misclassified" | "duplicate";
+                    description: string;
                     confidence: number;
                     transaction_ids: string[];
                     suggested_fix: string;
@@ -1707,8 +2173,8 @@ export declare const AgentSchemas: {
                 total_impact: number;
             }, {
                 issues: {
-                    description: string;
                     type: "uncategorized" | "misclassified" | "duplicate";
+                    description: string;
                     confidence: number;
                     transaction_ids: string[];
                     suggested_fix: string;
@@ -1737,8 +2203,8 @@ export declare const AgentSchemas: {
             success: boolean;
             data: {
                 issues: {
-                    description: string;
                     type: "uncategorized" | "misclassified" | "duplicate";
+                    description: string;
                     confidence: number;
                     transaction_ids: string[];
                     suggested_fix: string;
@@ -1764,8 +2230,8 @@ export declare const AgentSchemas: {
                 total_impact: number;
             };
             metadata: {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1778,8 +2244,8 @@ export declare const AgentSchemas: {
             success: boolean;
             data: {
                 issues: {
-                    description: string;
                     type: "uncategorized" | "misclassified" | "duplicate";
+                    description: string;
                     confidence: number;
                     transaction_ids: string[];
                     suggested_fix: string;
@@ -1805,8 +2271,8 @@ export declare const AgentSchemas: {
                 total_impact: number;
             };
             metadata: {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1819,13 +2285,13 @@ export declare const AgentSchemas: {
     };
     readonly 'savings-finder': {
         readonly input: z.ZodObject<{
-            subscriptions: z.ZodArray<z.ZodObject<{
+            subscriptions: z.ZodEffects<z.ZodArray<z.ZodObject<{
                 id: z.ZodString;
                 name: z.ZodString;
                 amount: z.ZodNumber;
                 frequency: z.ZodEnum<["monthly", "quarterly", "annually"]>;
                 category: z.ZodString;
-                last_used: z.ZodOptional<z.ZodString>;
+                last_used: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, string | undefined>;
                 auto_renew: z.ZodBoolean;
             }, "strip", z.ZodTypeAny, {
                 id: string;
@@ -1843,10 +2309,26 @@ export declare const AgentSchemas: {
                 frequency: "monthly" | "quarterly" | "annually";
                 auto_renew: boolean;
                 last_used?: string | undefined;
-            }>, "many">;
+            }>, "many">, {
+                id: string;
+                amount: number;
+                category: string;
+                name: string;
+                frequency: "monthly" | "quarterly" | "annually";
+                auto_renew: boolean;
+                last_used?: string | undefined;
+            }[], {
+                id: string;
+                amount: number;
+                category: string;
+                name: string;
+                frequency: "monthly" | "quarterly" | "annually";
+                auto_renew: boolean;
+                last_used?: string | undefined;
+            }[]>;
             historical_pricing: z.ZodArray<z.ZodObject<{
                 subscription_id: z.ZodString;
-                date: z.ZodString;
+                date: z.ZodEffects<z.ZodString, string, string>;
                 amount: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 date: string;
@@ -1859,7 +2341,7 @@ export declare const AgentSchemas: {
             }>, "many">;
             usage_data: z.ZodArray<z.ZodObject<{
                 subscription_id: z.ZodString;
-                last_activity: z.ZodString;
+                last_activity: z.ZodEffects<z.ZodString, string, string>;
                 usage_frequency: z.ZodEnum<["daily", "weekly", "monthly", "rarely", "never"]>;
             }, "strip", z.ZodTypeAny, {
                 subscription_id: string;
@@ -1931,8 +2413,8 @@ export declare const AgentSchemas: {
                     total_tokens: number;
                 }>;
             }, "strip", z.ZodTypeAny, {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -1940,8 +2422,8 @@ export declare const AgentSchemas: {
                     total_tokens: number;
                 };
             }, {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -2022,8 +2504,8 @@ export declare const AgentSchemas: {
                 action_items: string[];
             };
             metadata: {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -2049,8 +2531,8 @@ export declare const AgentSchemas: {
                 action_items: string[];
             };
             metadata: {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -2062,20 +2544,26 @@ export declare const AgentSchemas: {
         }>;
     };
     readonly 'cash-flow-runway': {
-        readonly input: z.ZodObject<{
+        readonly input: z.ZodEffects<z.ZodObject<{
             current_cash: z.ZodNumber;
-            time_period: z.ZodObject<{
-                start_date: z.ZodString;
-                end_date: z.ZodString;
+            time_period: z.ZodEffects<z.ZodObject<{
+                start_date: z.ZodEffects<z.ZodString, string, string>;
+                end_date: z.ZodEffects<z.ZodString, string, string>;
             }, "strip", z.ZodTypeAny, {
                 start_date: string;
                 end_date: string;
             }, {
                 start_date: string;
                 end_date: string;
+            }>, {
+                start_date: string;
+                end_date: string;
+            }, {
+                start_date: string;
+                end_date: string;
             }>;
-            cash_flows: z.ZodArray<z.ZodObject<{
-                date: z.ZodString;
+            cash_flows: z.ZodEffects<z.ZodArray<z.ZodObject<{
+                date: z.ZodEffects<z.ZodString, string, string>;
                 type: z.ZodEnum<["inflow", "outflow"]>;
                 amount: z.ZodNumber;
                 category: z.ZodString;
@@ -2083,24 +2571,38 @@ export declare const AgentSchemas: {
                 confidence: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 date: string;
+                type: "inflow" | "outflow";
                 description: string;
                 amount: number;
                 category: string;
-                type: "inflow" | "outflow";
                 confidence: number;
             }, {
                 date: string;
+                type: "inflow" | "outflow";
                 description: string;
                 amount: number;
                 category: string;
-                type: "inflow" | "outflow";
                 confidence: number;
-            }>, "many">;
+            }>, "many">, {
+                date: string;
+                type: "inflow" | "outflow";
+                description: string;
+                amount: number;
+                category: string;
+                confidence: number;
+            }[], {
+                date: string;
+                type: "inflow" | "outflow";
+                description: string;
+                amount: number;
+                category: string;
+                confidence: number;
+            }[]>;
             recurring_patterns: z.ZodArray<z.ZodObject<{
                 category: z.ZodString;
                 amount: z.ZodNumber;
                 frequency: z.ZodEnum<["daily", "weekly", "monthly", "quarterly", "annually"]>;
-                next_occurrence: z.ZodString;
+                next_occurrence: z.ZodEffects<z.ZodString, string, string>;
             }, "strip", z.ZodTypeAny, {
                 amount: number;
                 category: string;
@@ -2120,10 +2622,10 @@ export declare const AgentSchemas: {
             };
             cash_flows: {
                 date: string;
+                type: "inflow" | "outflow";
                 description: string;
                 amount: number;
                 category: string;
-                type: "inflow" | "outflow";
                 confidence: number;
             }[];
             recurring_patterns: {
@@ -2140,10 +2642,50 @@ export declare const AgentSchemas: {
             };
             cash_flows: {
                 date: string;
+                type: "inflow" | "outflow";
                 description: string;
                 amount: number;
                 category: string;
+                confidence: number;
+            }[];
+            recurring_patterns: {
+                amount: number;
+                category: string;
+                frequency: "monthly" | "quarterly" | "annually" | "daily" | "weekly";
+                next_occurrence: string;
+            }[];
+        }>, {
+            current_cash: number;
+            time_period: {
+                start_date: string;
+                end_date: string;
+            };
+            cash_flows: {
+                date: string;
                 type: "inflow" | "outflow";
+                description: string;
+                amount: number;
+                category: string;
+                confidence: number;
+            }[];
+            recurring_patterns: {
+                amount: number;
+                category: string;
+                frequency: "monthly" | "quarterly" | "annually" | "daily" | "weekly";
+                next_occurrence: string;
+            }[];
+        }, {
+            current_cash: number;
+            time_period: {
+                start_date: string;
+                end_date: string;
+            };
+            cash_flows: {
+                date: string;
+                type: "inflow" | "outflow";
+                description: string;
+                amount: number;
+                category: string;
                 confidence: number;
             }[];
             recurring_patterns: {
@@ -2173,8 +2715,8 @@ export declare const AgentSchemas: {
                     total_tokens: number;
                 }>;
             }, "strip", z.ZodTypeAny, {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -2182,8 +2724,8 @@ export declare const AgentSchemas: {
                     total_tokens: number;
                 };
             }, {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -2314,8 +2856,8 @@ export declare const AgentSchemas: {
                 risk_factors: string[];
             };
             metadata: {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
@@ -2350,8 +2892,8 @@ export declare const AgentSchemas: {
                 risk_factors: string[];
             };
             metadata: {
-                agent: string;
                 timestamp: string;
+                agent: string;
                 processing_time_ms: number;
                 token_usage: {
                     prompt_tokens: number;
