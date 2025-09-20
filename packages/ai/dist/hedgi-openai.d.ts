@@ -59,12 +59,12 @@ export declare class HedgiOpenAI {
     /**
      * Main method to call OpenAI with JSON mode, validation, and retry logic
      */
-    callWithJSONMode<T extends z.ZodTypeAny>(agent: AgentType, systemPrompt: string, userPrompt: string, responseSchema: T, payload: Record<string, any>, maxRetries?: number): Promise<z.infer<T>>;
+    callWithJSONMode<T extends z.ZodTypeAny>(agent: AgentType, systemPrompt: string, userPrompt: string, responseSchema: T, payload: Record<string, unknown>, maxRetries?: number): Promise<z.infer<T>>;
     /**
      * Prune payload to reduce token usage
      * Sorts transactions by materiality and limits to 1500
      */
-    prunePayload(payload: Record<string, any>): Record<string, any>;
+    prunePayload(payload: Record<string, unknown>): Record<string, unknown>;
     /**
      * Reset cost tracking
      */

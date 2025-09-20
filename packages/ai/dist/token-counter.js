@@ -6,6 +6,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.tokenCounter = exports.TokenCounter = void 0;
 const tiktoken_1 = require("tiktoken");
+const logger_1 = require("./logger");
 class TokenCounter {
     constructor() {
         this.encodings = new Map();
@@ -20,26 +21,34 @@ class TokenCounter {
                 const encoding = (0, tiktoken_1.encoding_for_model)(model);
                 this.encodings.set(model, encoding);
             }
-            catch (error) {
-                console.warn(`Failed to get encoding for model ${model}, falling back to ${this.DEFAULT_MODEL}`);
+            catch {
+                logger_1.loggerInstance.warn(`Failed to get encoding for model ${model}, falling back to ${this.DEFAULT_MODEL}`);
                 const encoding = (0, tiktoken_1.encoding_for_model)(this.DEFAULT_MODEL);
                 this.encodings.set(model, encoding);
             }
         }
-        return this.encodings.get(model);
+        const encoding = this.encodings.get(model);
+        if (!encoding) {
+            throw new Error(`Encoding not found for model: ${model}`);
+        }
+        return encoding;
     }
     /**
      * Count tokens in text using the specified model
      */
     countTokens(text, model = this.DEFAULT_MODEL) {
         try {
+            // Handle null/undefined text
+            if (!text || typeof text !== 'string') {
+                return 0;
+            }
             const encoding = this.getEncoding(model);
             return encoding.encode(text).length;
         }
         catch (error) {
-            console.error(`Error counting tokens for model ${model}:`, error);
+            logger_1.loggerInstance.error(`Error counting tokens for model ${model}:`, error instanceof Error ? error.message : String(error));
             // Fallback to rough estimation (1 token ≈ 4 characters)
-            return Math.ceil(text.length / 4);
+            return Math.ceil((text || '').length / 4);
         }
     }
     /**
@@ -47,7 +56,7 @@ class TokenCounter {
      */
     countConversationTokens(messages, model = this.DEFAULT_MODEL) {
         try {
-            const encoding = this.getEncoding(model);
+            // const encoding = this.getEncoding(model); // Not used in current implementation
             let totalTokens = 0;
             for (const message of messages) {
                 // Add message overhead (role + content)
@@ -59,9 +68,9 @@ class TokenCounter {
             return totalTokens;
         }
         catch (error) {
-            console.error(`Error counting conversation tokens for model ${model}:`, error);
+            logger_1.loggerInstance.error(`Error counting conversation tokens for model ${model}:`, error instanceof Error ? error.message : String(error));
             // Fallback to rough estimation
-            const totalText = messages.map(m => m.content).join(' ');
+            const totalText = messages.map((m) => m.content).join(' ');
             return Math.ceil(totalText.length / 4);
         }
     }
@@ -76,7 +85,7 @@ class TokenCounter {
             promptTokens: totalTokens,
             completionTokens: 0, // Will be updated after completion
             totalTokens,
-            model
+            model,
         };
     }
     /**
@@ -93,24 +102,24 @@ class TokenCounter {
         return {
             ...result,
             completionTokens,
-            totalTokens: result.promptTokens + completionTokens
+            totalTokens: result.promptTokens + completionTokens,
         };
     }
     /**
      * Validate token limits before making API call
      */
-    validateTokenLimits(systemPrompt, userPrompt, maxPromptTokens = 12000, maxCompletionTokens = 2000, model = this.DEFAULT_MODEL) {
+    validateTokenLimits(systemPrompt, userPrompt, maxPromptTokens = 12000, _maxCompletionTokens = 2000, model = this.DEFAULT_MODEL) {
         const result = this.countPromptTokens(systemPrompt, userPrompt, model);
         if (result.promptTokens > maxPromptTokens) {
             return {
                 valid: false,
                 promptTokens: result.promptTokens,
-                error: `Prompt exceeds token limit: ${result.promptTokens} > ${maxPromptTokens}`
+                error: `Prompt exceeds token limit: ${result.promptTokens} > ${maxPromptTokens}`,
             };
         }
         return {
             valid: true,
-            promptTokens: result.promptTokens
+            promptTokens: result.promptTokens,
         };
     }
     /**
@@ -126,7 +135,7 @@ class TokenCounter {
             userTokens,
             completionTokens,
             totalTokens,
-            model
+            model,
         };
     }
     /**

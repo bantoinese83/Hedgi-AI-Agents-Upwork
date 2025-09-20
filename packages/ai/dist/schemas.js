@@ -120,7 +120,13 @@ exports.SavingsFinderInputSchema = zod_1.z.object({
     usage_data: zod_1.z.array(zod_1.z.object({
         subscription_id: zod_1.z.string(),
         last_activity: zod_1.z.string(),
-        usage_frequency: zod_1.z.enum(['daily', 'weekly', 'monthly', 'rarely', 'never']),
+        usage_frequency: zod_1.z.enum([
+            'daily',
+            'weekly',
+            'monthly',
+            'rarely',
+            'never',
+        ]),
     })),
 });
 exports.SavingsFinderResponseSchema = exports.HedgiResponseSchema.extend({
@@ -157,7 +163,13 @@ exports.CashFlowRunwayInputSchema = zod_1.z.object({
     recurring_patterns: zod_1.z.array(zod_1.z.object({
         category: zod_1.z.string(),
         amount: zod_1.z.number(),
-        frequency: zod_1.z.enum(['daily', 'weekly', 'monthly', 'quarterly', 'annually']),
+        frequency: zod_1.z.enum([
+            'daily',
+            'weekly',
+            'monthly',
+            'quarterly',
+            'annually',
+        ]),
         next_occurrence: zod_1.z.string(),
     })),
 });

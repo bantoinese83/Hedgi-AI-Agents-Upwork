@@ -41,7 +41,7 @@ export declare class TokenCounter {
     /**
      * Validate token limits before making API call
      */
-    validateTokenLimits(systemPrompt: string, userPrompt: string, maxPromptTokens?: number, maxCompletionTokens?: number, model?: string): {
+    validateTokenLimits(systemPrompt: string, userPrompt: string, maxPromptTokens?: number, _maxCompletionTokens?: number, model?: string): {
         valid: boolean;
         promptTokens: number;
         error?: string;

@@ -4,7 +4,7 @@
  */
 
 import { encoding_for_model, type Tiktoken } from 'tiktoken';
-import { logger } from './logger';
+import { loggerInstance as logger } from './logger';
 
 export interface TokenCountResult {
   promptTokens: number;
@@ -57,7 +57,7 @@ export class TokenCounter {
       const encoding = this.getEncoding(model);
       return encoding.encode(text).length;
     } catch (error) {
-      logger.error(`Error counting tokens for model ${model}:`, error);
+      logger.error(`Error counting tokens for model ${model}:`, error instanceof Error ? error.message : String(error));
       // Fallback to rough estimation (1 token ≈ 4 characters)
       return Math.ceil((text || '').length / 4);
     }
@@ -87,7 +87,7 @@ export class TokenCounter {
     } catch (error) {
       logger.error(
         `Error counting conversation tokens for model ${model}:`,
-        error
+        error instanceof Error ? error.message : String(error)
       );
       // Fallback to rough estimation
       const totalText = messages.map((m) => m.content).join(' ');

@@ -1,6 +1,9 @@
 import { HedgiOpenAI, createHedgiOpenAI } from '../hedgi-openai';
 import { SMBExplainerResponseSchema, type SMBExplainerInput } from '../schemas';
 
+// Mock the logger module
+jest.mock('../logger');
+
 // Mock OpenAI
 const mockCreate = jest.fn();
 jest.mock('openai', () => {
@@ -29,21 +32,23 @@ jest.mock('tiktoken', () => ({
     }),
 }));
 
-// Mock logger
-jest.mock('../logger', () => ({
-    logger: {
-        info: jest.fn(),
-        warn: jest.fn(),
-        error: jest.fn(),
-        debug: jest.fn(),
-    },
-}));
-
 describe('HedgiOpenAI - Comprehensive Tests', () => {
     let openai: HedgiOpenAI;
 
     beforeEach(() => {
         jest.clearAllMocks();
+
+        // Mock the logger module
+        const mockLogger = {
+            info: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+            debug: jest.fn(),
+        };
+
+        jest.doMock('../logger', () => ({
+            loggerInstance: mockLogger,
+        }));
         openai = createHedgiOpenAI({
             apiKey: 'test-api-key',
             enableCostLogging: true,

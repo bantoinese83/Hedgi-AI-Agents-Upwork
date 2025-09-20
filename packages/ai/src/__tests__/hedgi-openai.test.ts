@@ -1,6 +1,16 @@
 import { HedgiOpenAI, createHedgiOpenAI } from '../hedgi-openai';
 import { SMBExplainerResponseSchema, type SMBExplainerInput } from '../schemas';
 
+// Mock the logger
+jest.mock('../logger', () => ({
+  loggerInstance: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  },
+}));
+
 // Mock OpenAI
 const mockCreate = jest.fn();
 jest.mock('openai', () => {

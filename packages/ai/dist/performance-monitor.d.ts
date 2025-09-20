@@ -52,7 +52,13 @@ export declare class PerformanceMonitor {
     getHealthStatus(): {
         status: 'healthy' | 'degraded' | 'unhealthy';
         message: string;
-        metrics: Record<string, any>;
+        metrics: {
+            totalRequests: number;
+            totalErrors: number;
+            errorRate: number;
+            averageResponseTime: number;
+            agents: Record<string, PerformanceMetrics>;
+        };
     };
     /**
      * Reset all metrics

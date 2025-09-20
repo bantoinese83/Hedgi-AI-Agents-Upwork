@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { logger } from './logger';
+import { loggerInstance as logger } from './logger';
 import { type AgentType, type HedgiResponse } from './schemas';
 import { tokenCounter } from './token-counter';
 
@@ -127,7 +127,7 @@ export class HedgiOpenAI {
         first_keys: Object.keys(payloadPreview).slice(0, 5),
         data_types: this.getDataTypes(payloadPreview),
       },
-    });
+    } as any);
   }
 
   /**
@@ -325,7 +325,7 @@ export class HedgiOpenAI {
             content,
             this.config.model
           );
-          logger.debug(`Token breakdown for ${agent}:`, breakdown);
+          logger.debug(`Token breakdown for ${agent}:`, breakdown as any);
         }
 
         const costInfo = this.calculateCost(tokenUsage);
@@ -362,7 +362,7 @@ export class HedgiOpenAI {
         // Log retry attempt
         logger.warn(
           `OpenAI call failed (attempt ${attempt + 1}/${maxRetries + 1}):`,
-          error
+          error instanceof Error ? error.message : String(error)
         );
 
         // Wait before retry (exponential backoff)

@@ -22,7 +22,7 @@ class RateLimiter {
             // First request or window expired
             this.requests.set(identifier, {
                 count: 1,
-                resetTime: now + this.config.windowMs
+                resetTime: now + this.config.windowMs,
             });
             return true;
         }
@@ -66,7 +66,7 @@ exports.RateLimiter = RateLimiter;
 // Default rate limiter: 10 requests per minute per IP
 exports.defaultRateLimiter = new RateLimiter({
     windowMs: 60 * 1000, // 1 minute
-    maxRequests: 10
+    maxRequests: 10,
 });
 // Cleanup expired entries every 5 minutes
 setInterval(() => {

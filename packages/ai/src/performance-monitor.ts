@@ -3,7 +3,7 @@
  * Tracks response times, error rates, and usage patterns
  */
 
-import { logger } from './logger';
+import { loggerInstance as logger } from './logger';
 
 interface PerformanceMetrics {
   totalRequests: number;
@@ -211,7 +211,7 @@ setInterval(
       status: health.status,
       message: health.message,
       timestamp: new Date().toISOString(),
-    });
+    } as any);
   },
   5 * 60 * 1000
 );

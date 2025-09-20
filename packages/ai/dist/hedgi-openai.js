@@ -1,11 +1,12 @@
 "use strict";
-const __importDefault = (this && this.__importDefault) || function (mod) {
+var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HedgiOpenAI = void 0;
 exports.createHedgiOpenAI = createHedgiOpenAI;
 const openai_1 = __importDefault(require("openai"));
+const logger_1 = require("./logger");
 const token_counter_1 = require("./token-counter");
 // Token limits as per requirements
 const MAX_PROMPT_TOKENS = 12000;
@@ -63,9 +64,12 @@ class HedgiOpenAI {
         if (!this.costTracker.has(agent)) {
             this.costTracker.set(agent, []);
         }
-        this.costTracker.get(agent).push(costInfo);
+        const agentCosts = this.costTracker.get(agent);
+        if (agentCosts) {
+            agentCosts.push(costInfo);
+        }
         // Log usage metrics and payload preview (no raw data/PII)
-        console.log({
+        logger_1.loggerInstance.info('Cost tracking', {
             agent,
             timestamp: new Date().toISOString(),
             cost: costInfo.total_cost,
@@ -116,7 +120,7 @@ class HedgiOpenAI {
             return null;
         const totalCost = costs.reduce((sum, cost) => sum + cost.total_cost, 0);
         const totalTokens = costs.reduce((sum, cost) => sum + cost.token_usage.total_tokens, 0);
-        const avgCostPerCall = totalCost / costs.length;
+        // const avgCostPerCall = totalCost / costs.length; // Unused for now
         return {
             prompt_cost: costs.reduce((sum, cost) => sum + cost.prompt_cost, 0),
             completion_cost: costs.reduce((sum, cost) => sum + cost.completion_cost, 0),
@@ -158,7 +162,7 @@ class HedgiOpenAI {
         const cacheKey = this.generateCacheKey(agent, systemPrompt, userPrompt);
         const cachedResponse = this.getCachedResponse(cacheKey);
         if (cachedResponse) {
-            console.log(`Cache hit for ${agent} - returning cached response`);
+            logger_1.loggerInstance.debug(`Cache hit for ${agent} - returning cached response`);
             return cachedResponse;
         }
         // Validate token limits using tiktoken
@@ -174,7 +178,7 @@ class HedgiOpenAI {
                     setTimeout(() => reject(new Error('Request timeout')), REQUEST_TIMEOUT_MS);
                 });
                 // Race between OpenAI call and timeout
-                const response = await Promise.race([
+                const response = (await Promise.race([
                     this.client.chat.completions.create({
                         model: this.config.model,
                         messages: [
@@ -185,8 +189,8 @@ class HedgiOpenAI {
                         max_tokens: MAX_COMPLETION_TOKENS,
                         temperature: 0.1, // Low temperature for consistent JSON output
                     }),
-                    timeoutPromise
-                ]);
+                    timeoutPromise,
+                ]));
                 const content = response.choices[0]?.message?.content;
                 if (!content) {
                     throw new Error('No content in OpenAI response');
@@ -204,7 +208,8 @@ class HedgiOpenAI {
                 // Calculate accurate token usage using tiktoken
                 const actualPromptTokens = response.usage?.prompt_tokens || tokenValidation.promptTokens;
                 const actualCompletionTokens = response.usage?.completion_tokens || 0;
-                const actualTotalTokens = response.usage?.total_tokens || (actualPromptTokens + actualCompletionTokens);
+                const actualTotalTokens = response.usage?.total_tokens ||
+                    actualPromptTokens + actualCompletionTokens;
                 // If OpenAI doesn't provide usage, calculate using tiktoken
                 const tokenUsage = {
                     prompt_tokens: actualPromptTokens,
@@ -214,7 +219,7 @@ class HedgiOpenAI {
                 // Log token breakdown for debugging
                 if (this.config.enableCostLogging) {
                     const breakdown = token_counter_1.tokenCounter.getTokenBreakdown(systemPrompt, userPrompt, content, this.config.model);
-                    console.log(`Token breakdown for ${agent}:`, breakdown);
+                    logger_1.loggerInstance.debug(`Token breakdown for ${agent}:`, breakdown);
                 }
                 const costInfo = this.calculateCost(tokenUsage);
                 this.logCost(agent, costInfo, payload);
@@ -233,7 +238,7 @@ class HedgiOpenAI {
                 // Cache the response
                 this.responseCache.set(cacheKey, {
                     response: hedgiResponse,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                 });
                 return hedgiResponse;
             }
@@ -244,28 +249,28 @@ class HedgiOpenAI {
                     break;
                 }
                 // Log retry attempt
-                console.warn(`OpenAI call failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+                logger_1.loggerInstance.warn(`OpenAI call failed (attempt ${attempt + 1}/${maxRetries + 1}):`, error instanceof Error ? error.message : String(error));
                 // Wait before retry (exponential backoff)
-                await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+                await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 1000));
             }
         }
         // If we get here, all retries failed
-        const processingTime = Date.now() - startTime;
-        const errorResponse = {
-            success: false,
-            data: {},
-            metadata: {
-                agent,
-                timestamp: new Date().toISOString(),
-                processing_time_ms: processingTime,
-                token_usage: {
-                    prompt_tokens: tokenValidation.promptTokens,
-                    completion_tokens: 0,
-                    total_tokens: tokenValidation.promptTokens,
-                },
-            },
-            error: lastError?.message || 'Unknown error occurred',
-        };
+        // const processingTime = Date.now() - startTime; // Unused for now
+        // const _errorResponse: HedgiResponse = {
+        //   success: false,
+        //   data: {},
+        //   metadata: {
+        //     agent,
+        //     timestamp: new Date().toISOString(),
+        //     processing_time_ms: processingTime,
+        //     token_usage: {
+        //       prompt_tokens: tokenValidation.promptTokens,
+        //       completion_tokens: 0,
+        //       total_tokens: tokenValidation.promptTokens,
+        //     },
+        //   },
+        //   error: lastError?.message || 'Unknown error occurred',
+        // };
         throw new Error(`Failed to get valid response after ${maxRetries + 1} attempts: ${lastError?.message}`);
     }
     /**
@@ -277,7 +282,11 @@ class HedgiOpenAI {
         // If payload has transactions, sort by materiality and limit to 1500
         if (pruned.transactions && Array.isArray(pruned.transactions)) {
             pruned.transactions = pruned.transactions
-                .sort((a, b) => (b.materiality_score || 0) - (a.materiality_score || 0))
+                .sort((a, b) => {
+                const aScore = a?.materiality_score || 0;
+                const bScore = b?.materiality_score || 0;
+                return bScore - aScore;
+            })
                 .slice(0, 1500);
         }
         // Remove any PII or sensitive data that might have been included

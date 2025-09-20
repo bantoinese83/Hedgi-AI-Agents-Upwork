@@ -5,6 +5,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.performanceMonitor = exports.PerformanceMonitor = void 0;
+const logger_1 = require("./logger");
 class PerformanceMonitor {
     constructor() {
         this.metrics = new Map();
@@ -22,7 +23,7 @@ class PerformanceMonitor {
             agent,
             responseTime,
             success,
-            error
+            error,
         });
         // Keep only recent logs
         if (this.requestLogs.length > this.MAX_LOGS) {
@@ -44,7 +45,7 @@ class PerformanceMonitor {
                 averageResponseTime: 0,
                 minResponseTime: responseTime,
                 maxResponseTime: responseTime,
-                lastRequestTime: Date.now()
+                lastRequestTime: Date.now(),
             };
         }
         metrics.totalRequests++;
@@ -56,7 +57,9 @@ class PerformanceMonitor {
         }
         // Update response time metrics
         metrics.averageResponseTime =
-            (metrics.averageResponseTime * (metrics.totalRequests - 1) + responseTime) / metrics.totalRequests;
+            (metrics.averageResponseTime * (metrics.totalRequests - 1) +
+                responseTime) /
+                metrics.totalRequests;
         metrics.minResponseTime = Math.min(metrics.minResponseTime, responseTime);
         metrics.maxResponseTime = Math.max(metrics.maxResponseTime, responseTime);
         metrics.lastRequestTime = Date.now();
@@ -94,12 +97,12 @@ class PerformanceMonitor {
      */
     getHealthStatus() {
         const allMetrics = this.getAllMetrics();
-        const now = Date.now();
+        // const now = Date.now(); // Unused for now
         let totalRequests = 0;
         let totalErrors = 0;
         let avgResponseTime = 0;
         let agentCount = 0;
-        allMetrics.forEach((metrics, agent) => {
+        allMetrics.forEach((metrics, _agent) => {
             totalRequests += metrics.totalRequests;
             totalErrors += metrics.failedRequests;
             avgResponseTime += metrics.averageResponseTime;
@@ -129,8 +132,8 @@ class PerformanceMonitor {
                 totalErrors,
                 errorRate: overallErrorRate,
                 averageResponseTime: overallAvgResponseTime,
-                agents: Object.fromEntries(allMetrics)
-            }
+                agents: Object.fromEntries(allMetrics),
+            },
         };
     }
     /**
@@ -147,10 +150,10 @@ exports.performanceMonitor = new PerformanceMonitor();
 // Log performance metrics every 5 minutes
 setInterval(() => {
     const health = exports.performanceMonitor.getHealthStatus();
-    console.log('Performance Health Check:', {
+    logger_1.loggerInstance.info('Performance Health Check:', {
         status: health.status,
         message: health.message,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
     });
 }, 5 * 60 * 1000);
 //# sourceMappingURL=performance-monitor.js.map
