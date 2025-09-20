@@ -16,20 +16,28 @@ export declare class TokenCounter {
      */
     private getEncoding;
     /**
-     * Count tokens in text using the specified model
+     * Count tokens in text using the specified model (async version)
      */
-    countTokens(text: string, model?: string): number;
+    countTokens(text: string, model?: string): Promise<number>;
     /**
-     * Count tokens for a complete conversation
+     * Count tokens in text using the specified model (sync version for backward compatibility)
+     */
+    countTokensSync(text: string, model?: string): number;
+    /**
+     * Count tokens for a complete conversation (async version)
      */
     countConversationTokens(messages: Array<{
         role: string;
         content: string;
-    }>, model?: string): number;
+    }>, model?: string): Promise<number>;
     /**
-     * Count tokens for system and user prompts separately
+     * Count tokens for system and user prompts separately (async version)
      */
-    countPromptTokens(systemPrompt: string, userPrompt: string, model?: string): TokenCountResult;
+    countPromptTokens(systemPrompt: string, userPrompt: string, model?: string): Promise<TokenCountResult>;
+    /**
+     * Count tokens for system and user prompts separately (sync version for backward compatibility)
+     */
+    countPromptTokensSync(systemPrompt: string, userPrompt: string, model?: string): TokenCountResult;
     /**
      * Count tokens for completion response
      */
@@ -39,9 +47,17 @@ export declare class TokenCounter {
      */
     updateWithCompletion(result: TokenCountResult, completion: string, model?: string): TokenCountResult;
     /**
-     * Validate token limits before making API call
+     * Validate token limits before making API call (async version)
      */
-    validateTokenLimits(systemPrompt: string, userPrompt: string, maxPromptTokens?: number, _maxCompletionTokens?: number, model?: string): {
+    validateTokenLimits(systemPrompt: string, userPrompt: string, maxPromptTokens?: number, _maxCompletionTokens?: number, model?: string): Promise<{
+        valid: boolean;
+        promptTokens: number;
+        error?: string;
+    }>;
+    /**
+     * Validate token limits before making API call (sync version for backward compatibility)
+     */
+    validateTokenLimitsSync(systemPrompt: string, userPrompt: string, maxPromptTokens?: number, _maxCompletionTokens?: number, model?: string): {
         valid: boolean;
         promptTokens: number;
         error?: string;

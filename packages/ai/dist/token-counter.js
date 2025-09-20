@@ -34,9 +34,31 @@ class TokenCounter {
         return encoding;
     }
     /**
-     * Count tokens in text using the specified model
+     * Count tokens in text using the specified model (async version)
      */
-    countTokens(text, model = this.DEFAULT_MODEL) {
+    async countTokens(text, model = this.DEFAULT_MODEL) {
+        return new Promise((resolve) => {
+            try {
+                // Handle null/undefined text
+                if (!text || typeof text !== 'string') {
+                    resolve(0);
+                    return;
+                }
+                const encoding = this.getEncoding(model);
+                const tokenCount = encoding.encode(text).length;
+                resolve(tokenCount);
+            }
+            catch (error) {
+                logger_1.loggerInstance.error(`Error counting tokens for model ${model}:`, error instanceof Error ? error.message : String(error));
+                // Fallback to rough estimation (1 token ≈ 4 characters)
+                resolve(Math.ceil((text || '').length / 4));
+            }
+        });
+    }
+    /**
+     * Count tokens in text using the specified model (sync version for backward compatibility)
+     */
+    countTokensSync(text, model = this.DEFAULT_MODEL) {
         try {
             // Handle null/undefined text
             if (!text || typeof text !== 'string') {
@@ -52,16 +74,15 @@ class TokenCounter {
         }
     }
     /**
-     * Count tokens for a complete conversation
+     * Count tokens for a complete conversation (async version)
      */
-    countConversationTokens(messages, model = this.DEFAULT_MODEL) {
+    async countConversationTokens(messages, model = this.DEFAULT_MODEL) {
         try {
-            // const encoding = this.getEncoding(model); // Not used in current implementation
             let totalTokens = 0;
             for (const message of messages) {
                 // Add message overhead (role + content)
                 totalTokens += 4; // Every message has 4 tokens overhead
-                totalTokens += this.countTokens(message.content, model);
+                totalTokens += await this.countTokens(message.content, model);
             }
             // Add conversation overhead
             totalTokens += 2; // Every conversation has 2 tokens overhead
@@ -75,11 +96,27 @@ class TokenCounter {
         }
     }
     /**
-     * Count tokens for system and user prompts separately
+     * Count tokens for system and user prompts separately (async version)
      */
-    countPromptTokens(systemPrompt, userPrompt, model = this.DEFAULT_MODEL) {
-        const systemTokens = this.countTokens(systemPrompt, model);
-        const userTokens = this.countTokens(userPrompt, model);
+    async countPromptTokens(systemPrompt, userPrompt, model = this.DEFAULT_MODEL) {
+        const [systemTokens, userTokens] = await Promise.all([
+            this.countTokens(systemPrompt, model),
+            this.countTokens(userPrompt, model)
+        ]);
+        const totalTokens = systemTokens + userTokens;
+        return {
+            promptTokens: totalTokens,
+            completionTokens: 0, // Will be updated after completion
+            totalTokens,
+            model,
+        };
+    }
+    /**
+     * Count tokens for system and user prompts separately (sync version for backward compatibility)
+     */
+    countPromptTokensSync(systemPrompt, userPrompt, model = this.DEFAULT_MODEL) {
+        const systemTokens = this.countTokensSync(systemPrompt, model);
+        const userTokens = this.countTokensSync(userPrompt, model);
         const totalTokens = systemTokens + userTokens;
         return {
             promptTokens: totalTokens,
@@ -92,7 +129,7 @@ class TokenCounter {
      * Count tokens for completion response
      */
     countCompletionTokens(response, model = this.DEFAULT_MODEL) {
-        return this.countTokens(response, model);
+        return this.countTokensSync(response, model);
     }
     /**
      * Update token count result with completion tokens
@@ -106,10 +143,27 @@ class TokenCounter {
         };
     }
     /**
-     * Validate token limits before making API call
+     * Validate token limits before making API call (async version)
      */
-    validateTokenLimits(systemPrompt, userPrompt, maxPromptTokens = 12000, _maxCompletionTokens = 2000, model = this.DEFAULT_MODEL) {
-        const result = this.countPromptTokens(systemPrompt, userPrompt, model);
+    async validateTokenLimits(systemPrompt, userPrompt, maxPromptTokens = 12000, _maxCompletionTokens = 2000, model = this.DEFAULT_MODEL) {
+        const result = await this.countPromptTokens(systemPrompt, userPrompt, model);
+        if (result.promptTokens > maxPromptTokens) {
+            return {
+                valid: false,
+                promptTokens: result.promptTokens,
+                error: `Prompt exceeds token limit: ${result.promptTokens} > ${maxPromptTokens}`,
+            };
+        }
+        return {
+            valid: true,
+            promptTokens: result.promptTokens,
+        };
+    }
+    /**
+     * Validate token limits before making API call (sync version for backward compatibility)
+     */
+    validateTokenLimitsSync(systemPrompt, userPrompt, maxPromptTokens = 12000, _maxCompletionTokens = 2000, model = this.DEFAULT_MODEL) {
+        const result = this.countPromptTokensSync(systemPrompt, userPrompt, model);
         if (result.promptTokens > maxPromptTokens) {
             return {
                 valid: false,
@@ -126,9 +180,9 @@ class TokenCounter {
      * Get token count breakdown for logging
      */
     getTokenBreakdown(systemPrompt, userPrompt, completion, model = this.DEFAULT_MODEL) {
-        const systemTokens = this.countTokens(systemPrompt, model);
-        const userTokens = this.countTokens(userPrompt, model);
-        const completionTokens = this.countTokens(completion, model);
+        const systemTokens = this.countTokensSync(systemPrompt, model);
+        const userTokens = this.countTokensSync(userPrompt, model);
+        const completionTokens = this.countTokensSync(completion, model);
         const totalTokens = systemTokens + userTokens + completionTokens;
         return {
             systemTokens,

@@ -81,13 +81,20 @@ class HedgiOpenAI {
     constructor(config) {
         this.costTracker = new Map();
         this.responseCache = new Map();
-        // Circuit breaker state with atomic transitions
+        // Circuit breaker state with atomic transitions and caching
         this.circuitBreaker = {
             state: CircuitState.CLOSED,
             failureCount: 0,
             lastFailureTime: 0,
             nextAttemptTime: 0,
             lastStateChange: Date.now(),
+        };
+        // Circuit breaker state caching
+        this.circuitBreakerCache = {
+            state: CircuitState.CLOSED,
+            isOpen: false,
+            lastCheckTime: 0,
+            cacheTimeout: 1000, // Cache for 1 second
         };
         // Memory management
         this.requestQueue = [];
@@ -112,13 +119,21 @@ class HedgiOpenAI {
         }, 10 * 60 * 1000);
     }
     /**
-     * Check circuit breaker state atomically
+     * Check circuit breaker state with conditional caching
      */
     isCircuitBreakerOpen() {
         const now = Date.now();
+        // Check cache first if still valid
+        if (now - this.circuitBreakerCache.lastCheckTime < this.circuitBreakerCache.cacheTimeout) {
+            return this.circuitBreakerCache.isOpen;
+        }
         const currentState = this.circuitBreaker.state;
         switch (currentState) {
             case CircuitState.CLOSED:
+                // Update cache
+                this.circuitBreakerCache.state = CircuitState.CLOSED;
+                this.circuitBreakerCache.isOpen = false;
+                this.circuitBreakerCache.lastCheckTime = now;
                 return false;
             case CircuitState.OPEN:
                 if (now >= this.circuitBreaker.nextAttemptTime) {
@@ -127,17 +142,33 @@ class HedgiOpenAI {
                         this.circuitBreaker.state = CircuitState.HALF_OPEN;
                         this.circuitBreaker.lastStateChange = now;
                     }
+                    // Update cache
+                    this.circuitBreakerCache.state = CircuitState.HALF_OPEN;
+                    this.circuitBreakerCache.isOpen = false;
+                    this.circuitBreakerCache.lastCheckTime = now;
                     return false;
                 }
+                // Update cache
+                this.circuitBreakerCache.state = CircuitState.OPEN;
+                this.circuitBreakerCache.isOpen = true;
+                this.circuitBreakerCache.lastCheckTime = now;
                 return true;
             case CircuitState.HALF_OPEN:
+                // Update cache
+                this.circuitBreakerCache.state = CircuitState.HALF_OPEN;
+                this.circuitBreakerCache.isOpen = false;
+                this.circuitBreakerCache.lastCheckTime = now;
                 return false;
             default:
+                // Update cache
+                this.circuitBreakerCache.state = CircuitState.CLOSED;
+                this.circuitBreakerCache.isOpen = false;
+                this.circuitBreakerCache.lastCheckTime = now;
                 return false;
         }
     }
     /**
-     * Record success/failure for circuit breaker atomically
+     * Record success/failure for circuit breaker atomically and update cache
      */
     recordCircuitBreakerEvent(success) {
         const now = Date.now();
@@ -147,6 +178,10 @@ class HedgiOpenAI {
             if (this.circuitBreaker.state === CircuitState.HALF_OPEN) {
                 this.circuitBreaker.state = CircuitState.CLOSED;
                 this.circuitBreaker.lastStateChange = now;
+                // Update cache
+                this.circuitBreakerCache.state = CircuitState.CLOSED;
+                this.circuitBreakerCache.isOpen = false;
+                this.circuitBreakerCache.lastCheckTime = now;
             }
         }
         else {
@@ -158,6 +193,10 @@ class HedgiOpenAI {
                 this.circuitBreaker.state = CircuitState.OPEN;
                 this.circuitBreaker.nextAttemptTime = now + CIRCUIT_BREAKER_TIMEOUT_MS;
                 this.circuitBreaker.lastStateChange = now;
+                // Update cache
+                this.circuitBreakerCache.state = CircuitState.OPEN;
+                this.circuitBreakerCache.isOpen = true;
+                this.circuitBreakerCache.lastCheckTime = now;
             }
         }
     }
@@ -215,7 +254,7 @@ class HedgiOpenAI {
      * Validate token limits before making API call using tiktoken
      */
     validateTokenLimits(systemPrompt, userPrompt) {
-        return token_counter_1.tokenCounter.validateTokenLimits(systemPrompt, userPrompt, MAX_PROMPT_TOKENS, MAX_COMPLETION_TOKENS, this.config.model);
+        return token_counter_1.tokenCounter.validateTokenLimitsSync(systemPrompt, userPrompt, MAX_PROMPT_TOKENS, MAX_COMPLETION_TOKENS, this.config.model);
     }
     /**
      * Calculate cost for token usage

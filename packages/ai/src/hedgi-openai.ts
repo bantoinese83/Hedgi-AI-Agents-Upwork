@@ -108,7 +108,7 @@ export class HedgiOpenAI {
     { response: HedgiResponse; timestamp: number }
   > = new Map();
 
-  // Circuit breaker state with atomic transitions
+  // Circuit breaker state with atomic transitions and caching
   private circuitBreaker: CircuitBreakerState = {
     state: CircuitState.CLOSED,
     failureCount: 0,
@@ -116,6 +116,19 @@ export class HedgiOpenAI {
     nextAttemptTime: 0,
     lastStateChange: Date.now(),
   };
+
+  // Circuit breaker state caching
+  private circuitBreakerCache: {
+    state: CircuitState;
+    isOpen: boolean;
+    lastCheckTime: number;
+    cacheTimeout: number;
+  } = {
+      state: CircuitState.CLOSED,
+      isOpen: false,
+      lastCheckTime: 0,
+      cacheTimeout: 1000, // Cache for 1 second
+    };
 
   // Memory management
   private requestQueue: Array<{ resolve: Function; reject: Function; request: any }> = [];
@@ -148,14 +161,24 @@ export class HedgiOpenAI {
   }
 
   /**
-   * Check circuit breaker state atomically
+   * Check circuit breaker state with conditional caching
    */
   private isCircuitBreakerOpen(): boolean {
     const now = Date.now();
+
+    // Check cache first if still valid
+    if (now - this.circuitBreakerCache.lastCheckTime < this.circuitBreakerCache.cacheTimeout) {
+      return this.circuitBreakerCache.isOpen;
+    }
+
     const currentState = this.circuitBreaker.state;
 
     switch (currentState) {
       case CircuitState.CLOSED:
+        // Update cache
+        this.circuitBreakerCache.state = CircuitState.CLOSED;
+        this.circuitBreakerCache.isOpen = false;
+        this.circuitBreakerCache.lastCheckTime = now;
         return false;
 
       case CircuitState.OPEN:
@@ -165,20 +188,36 @@ export class HedgiOpenAI {
             this.circuitBreaker.state = CircuitState.HALF_OPEN;
             this.circuitBreaker.lastStateChange = now;
           }
+          // Update cache
+          this.circuitBreakerCache.state = CircuitState.HALF_OPEN;
+          this.circuitBreakerCache.isOpen = false;
+          this.circuitBreakerCache.lastCheckTime = now;
           return false;
         }
+        // Update cache
+        this.circuitBreakerCache.state = CircuitState.OPEN;
+        this.circuitBreakerCache.isOpen = true;
+        this.circuitBreakerCache.lastCheckTime = now;
         return true;
 
       case CircuitState.HALF_OPEN:
+        // Update cache
+        this.circuitBreakerCache.state = CircuitState.HALF_OPEN;
+        this.circuitBreakerCache.isOpen = false;
+        this.circuitBreakerCache.lastCheckTime = now;
         return false;
 
       default:
+        // Update cache
+        this.circuitBreakerCache.state = CircuitState.CLOSED;
+        this.circuitBreakerCache.isOpen = false;
+        this.circuitBreakerCache.lastCheckTime = now;
         return false;
     }
   }
 
   /**
-   * Record success/failure for circuit breaker atomically
+   * Record success/failure for circuit breaker atomically and update cache
    */
   private recordCircuitBreakerEvent(success: boolean): void {
     const now = Date.now();
@@ -189,6 +228,10 @@ export class HedgiOpenAI {
       if (this.circuitBreaker.state === CircuitState.HALF_OPEN) {
         this.circuitBreaker.state = CircuitState.CLOSED;
         this.circuitBreaker.lastStateChange = now;
+        // Update cache
+        this.circuitBreakerCache.state = CircuitState.CLOSED;
+        this.circuitBreakerCache.isOpen = false;
+        this.circuitBreakerCache.lastCheckTime = now;
       }
     } else {
       this.circuitBreaker.failureCount++;
@@ -200,6 +243,10 @@ export class HedgiOpenAI {
         this.circuitBreaker.state = CircuitState.OPEN;
         this.circuitBreaker.nextAttemptTime = now + CIRCUIT_BREAKER_TIMEOUT_MS;
         this.circuitBreaker.lastStateChange = now;
+        // Update cache
+        this.circuitBreakerCache.state = CircuitState.OPEN;
+        this.circuitBreakerCache.isOpen = true;
+        this.circuitBreakerCache.lastCheckTime = now;
       }
     }
   }
@@ -267,7 +314,7 @@ export class HedgiOpenAI {
     systemPrompt: string,
     userPrompt: string
   ): { valid: boolean; promptTokens: number; error?: string } {
-    return tokenCounter.validateTokenLimits(
+    return tokenCounter.validateTokenLimitsSync(
       systemPrompt,
       userPrompt,
       MAX_PROMPT_TOKENS,

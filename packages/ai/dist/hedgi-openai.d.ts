@@ -51,16 +51,17 @@ export declare class HedgiOpenAI {
     private costTracker;
     private responseCache;
     private circuitBreaker;
+    private circuitBreakerCache;
     private requestQueue;
     private maxConcurrentRequests;
     private activeRequests;
     constructor(config: HedgiOpenAIConfig);
     /**
-     * Check circuit breaker state atomically
+     * Check circuit breaker state with conditional caching
      */
     private isCircuitBreakerOpen;
     /**
-     * Record success/failure for circuit breaker atomically
+     * Record success/failure for circuit breaker atomically and update cache
      */
     private recordCircuitBreakerEvent;
     /**

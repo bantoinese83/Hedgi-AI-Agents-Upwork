@@ -26,10 +26,10 @@ describe('TokenCounter', () => {
             const count = counter.countTokens('');
             expect(count).toBe(0);
         });
-        it('should handle different models', () => {
+        it('should handle different models', async () => {
             const text = 'Hello, world!';
-            const gpt4Count = counter.countTokens(text, 'gpt-4');
-            const gpt4oCount = counter.countTokens(text, 'gpt-4o');
+            const gpt4Count = await counter.countTokens(text, 'gpt-4');
+            const gpt4oCount = await counter.countTokens(text, 'gpt-4o');
             expect(gpt4Count).toBeGreaterThan(0);
             expect(gpt4oCount).toBeGreaterThan(0);
             // Different models might have slightly different token counts
@@ -37,13 +37,13 @@ describe('TokenCounter', () => {
         });
     });
     describe('countConversationTokens', () => {
-        it('should count tokens for a conversation', () => {
+        it('should count tokens for a conversation', async () => {
             const messages = [
                 { role: 'system', content: 'You are a helpful assistant.' },
                 { role: 'user', content: 'Hello, how are you?' },
                 { role: 'assistant', content: 'I am doing well, thank you!' },
             ];
-            const count = counter.countConversationTokens(messages);
+            const count = await counter.countConversationTokens(messages);
             expect(count).toBeGreaterThan(0);
         });
         it('should handle empty conversation', () => {
@@ -52,10 +52,10 @@ describe('TokenCounter', () => {
         });
     });
     describe('countPromptTokens', () => {
-        it('should count system and user prompts separately', () => {
+        it('should count system and user prompts separately', async () => {
             const systemPrompt = 'You are a helpful assistant.';
             const userPrompt = 'Hello, how are you?';
-            const result = counter.countPromptTokens(systemPrompt, userPrompt);
+            const result = await counter.countPromptTokens(systemPrompt, userPrompt);
             expect(result.promptTokens).toBeGreaterThan(0);
             expect(result.completionTokens).toBe(0);
             expect(result.totalTokens).toBe(result.promptTokens);
@@ -63,18 +63,18 @@ describe('TokenCounter', () => {
         });
     });
     describe('validateTokenLimits', () => {
-        it('should validate within limits', () => {
+        it('should validate within limits', async () => {
             const systemPrompt = 'You are a helpful assistant.';
             const userPrompt = 'Hello, how are you?';
-            const result = counter.validateTokenLimits(systemPrompt, userPrompt, 1000, 100);
+            const result = await counter.validateTokenLimits(systemPrompt, userPrompt, 1000, 100);
             expect(result.valid).toBe(true);
             expect(result.promptTokens).toBeGreaterThan(0);
             expect(result.error).toBeUndefined();
         });
-        it('should reject when exceeding limits', () => {
+        it('should reject when exceeding limits', async () => {
             const systemPrompt = 'You are a helpful assistant.';
             const userPrompt = 'Hello, how are you?';
-            const result = counter.validateTokenLimits(systemPrompt, userPrompt, 1, 1);
+            const result = await counter.validateTokenLimits(systemPrompt, userPrompt, 1, 1);
             expect(result.valid).toBe(false);
             expect(result.promptTokens).toBeGreaterThan(1);
             expect(result.error).toContain('exceeds token limit');
