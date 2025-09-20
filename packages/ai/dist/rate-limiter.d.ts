@@ -1,14 +1,16 @@
 /**
- * Simple in-memory rate limiter for API endpoints
- * Prevents abuse and ensures fair usage
+ * Persistent rate limiter for API endpoints with file-based storage
+ * Prevents abuse and ensures fair usage across application restarts
  */
 interface RateLimitConfig {
     windowMs: number;
     maxRequests: number;
+    storagePath?: string;
 }
 export declare class RateLimiter {
     private requests;
     private config;
+    private persistenceTimer;
     constructor(config: RateLimitConfig);
     /**
      * Check if request is allowed
@@ -24,6 +26,22 @@ export declare class RateLimiter {
      * Get reset time for identifier
      */
     getResetTime(identifier: string): number;
+    /**
+     * Load rate limit data from persistent storage
+     */
+    private loadFromStorage;
+    /**
+     * Save rate limit data to persistent storage
+     */
+    private saveToStorage;
+    /**
+     * Start periodic persistence
+     */
+    private startPersistence;
+    /**
+     * Stop persistence and cleanup
+     */
+    destroy(): void;
     /**
      * Clean up expired entries
      */

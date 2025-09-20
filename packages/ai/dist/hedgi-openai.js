@@ -3,16 +3,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.HedgiOpenAI = void 0;
+exports.HedgiOpenAI = exports.RateLimitError = exports.TokenLimitError = exports.PayloadSizeError = exports.CircuitBreakerError = exports.HedgiOpenAIError = void 0;
 exports.createHedgiOpenAI = createHedgiOpenAI;
+const crypto_1 = require("crypto");
 const openai_1 = __importDefault(require("openai"));
 const logger_1 = require("./logger");
 const token_counter_1 = require("./token-counter");
-// Token limits as per requirements
+// Constants
 const MAX_PROMPT_TOKENS = 12000;
 const MAX_COMPLETION_TOKENS = 2000;
 const MAX_RETRIES = 1;
 const REQUEST_TIMEOUT_MS = 30000; // 30 seconds timeout
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
 // Circuit breaker configuration
 const CIRCUIT_BREAKER_THRESHOLD = 5; // Number of failures before opening circuit
 const CIRCUIT_BREAKER_TIMEOUT_MS = 60000; // 1 minute timeout before half-open
@@ -20,7 +22,55 @@ const EXPONENTIAL_BACKOFF_BASE_MS = 1000; // Base delay for exponential backoff
 // Cost tracking (approximate costs as of 2024)
 const COST_PER_1K_PROMPT_TOKENS = 0.03; // GPT-4 pricing
 const COST_PER_1K_COMPLETION_TOKENS = 0.06;
-// Circuit breaker states
+// Payload size limits
+const MAX_PAYLOAD_SIZE_MB = 10;
+const MAX_TRANSACTIONS = 1500;
+// Concurrency limits
+const MAX_CONCURRENT_REQUESTS = 10;
+// Memory management
+const MEMORY_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_MEMORY_USAGE_PERCENT = 80; // Trigger cleanup at 80% memory usage
+// Custom error classes for better error handling
+class HedgiOpenAIError extends Error {
+    constructor(message, code, details) {
+        super(message);
+        this.code = code;
+        this.details = details;
+        this.name = 'HedgiOpenAIError';
+    }
+}
+exports.HedgiOpenAIError = HedgiOpenAIError;
+class CircuitBreakerError extends HedgiOpenAIError {
+    constructor(message = 'Circuit breaker is open - service temporarily unavailable') {
+        super(message, 'CIRCUIT_BREAKER_OPEN');
+    }
+}
+exports.CircuitBreakerError = CircuitBreakerError;
+class PayloadSizeError extends HedgiOpenAIError {
+    constructor(message, sizeMB, maxSizeMB) {
+        super(message, 'PAYLOAD_TOO_LARGE', { sizeMB, maxSizeMB });
+        this.sizeMB = sizeMB;
+        this.maxSizeMB = maxSizeMB;
+    }
+}
+exports.PayloadSizeError = PayloadSizeError;
+class TokenLimitError extends HedgiOpenAIError {
+    constructor(message, tokenCount, limit) {
+        super(message, 'TOKEN_LIMIT_EXCEEDED', { tokenCount, limit });
+        this.tokenCount = tokenCount;
+        this.limit = limit;
+    }
+}
+exports.TokenLimitError = TokenLimitError;
+class RateLimitError extends HedgiOpenAIError {
+    constructor(message, identifier, resetTime) {
+        super(message, 'RATE_LIMIT_EXCEEDED', { identifier, resetTime });
+        this.identifier = identifier;
+        this.resetTime = resetTime;
+    }
+}
+exports.RateLimitError = RateLimitError;
+// Circuit breaker states with atomic transitions
 var CircuitState;
 (function (CircuitState) {
     CircuitState["CLOSED"] = "closed";
@@ -31,13 +81,13 @@ class HedgiOpenAI {
     constructor(config) {
         this.costTracker = new Map();
         this.responseCache = new Map();
-        this.CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
-        // Circuit breaker state
+        // Circuit breaker state with atomic transitions
         this.circuitBreaker = {
             state: CircuitState.CLOSED,
             failureCount: 0,
             lastFailureTime: 0,
             nextAttemptTime: 0,
+            lastStateChange: Date.now(),
         };
         // Memory management
         this.requestQueue = [];
@@ -62,16 +112,21 @@ class HedgiOpenAI {
         }, 10 * 60 * 1000);
     }
     /**
-     * Check circuit breaker state
+     * Check circuit breaker state atomically
      */
     isCircuitBreakerOpen() {
         const now = Date.now();
-        switch (this.circuitBreaker.state) {
+        const currentState = this.circuitBreaker.state;
+        switch (currentState) {
             case CircuitState.CLOSED:
                 return false;
             case CircuitState.OPEN:
                 if (now >= this.circuitBreaker.nextAttemptTime) {
-                    this.circuitBreaker.state = CircuitState.HALF_OPEN;
+                    // Atomically transition to HALF_OPEN
+                    if (this.circuitBreaker.state === CircuitState.OPEN) {
+                        this.circuitBreaker.state = CircuitState.HALF_OPEN;
+                        this.circuitBreaker.lastStateChange = now;
+                    }
                     return false;
                 }
                 return true;
@@ -82,21 +137,27 @@ class HedgiOpenAI {
         }
     }
     /**
-     * Record success/failure for circuit breaker
+     * Record success/failure for circuit breaker atomically
      */
     recordCircuitBreakerEvent(success) {
+        const now = Date.now();
         if (success) {
+            // Atomically reset failure count and transition from HALF_OPEN to CLOSED
             this.circuitBreaker.failureCount = 0;
             if (this.circuitBreaker.state === CircuitState.HALF_OPEN) {
                 this.circuitBreaker.state = CircuitState.CLOSED;
+                this.circuitBreaker.lastStateChange = now;
             }
         }
         else {
             this.circuitBreaker.failureCount++;
-            this.circuitBreaker.lastFailureTime = Date.now();
-            if (this.circuitBreaker.failureCount >= CIRCUIT_BREAKER_THRESHOLD) {
+            this.circuitBreaker.lastFailureTime = now;
+            // Atomically transition to OPEN if threshold reached
+            if (this.circuitBreaker.failureCount >= CIRCUIT_BREAKER_THRESHOLD &&
+                this.circuitBreaker.state !== CircuitState.OPEN) {
                 this.circuitBreaker.state = CircuitState.OPEN;
-                this.circuitBreaker.nextAttemptTime = Date.now() + CIRCUIT_BREAKER_TIMEOUT_MS;
+                this.circuitBreaker.nextAttemptTime = now + CIRCUIT_BREAKER_TIMEOUT_MS;
+                this.circuitBreaker.lastStateChange = now;
             }
         }
     }
@@ -123,22 +184,32 @@ class HedgiOpenAI {
      * Process the request queue
      */
     async processQueue() {
-        if (this.activeRequests >= this.maxConcurrentRequests || this.requestQueue.length === 0) {
-            return;
+        // Iterative processing to prevent recursion
+        while (this.activeRequests < this.maxConcurrentRequests && this.requestQueue.length > 0) {
+            this.activeRequests++;
+            const { resolve, reject, request } = this.requestQueue.shift();
+            try {
+                const result = await request();
+                resolve(result);
+            }
+            catch (error) {
+                reject(error);
+            }
+            finally {
+                this.activeRequests--;
+            }
         }
-        this.activeRequests++;
-        const { resolve, reject, request } = this.requestQueue.shift();
-        try {
-            const result = await request();
-            resolve(result);
+    }
+    /**
+     * Validate payload size limits
+     */
+    validatePayloadSize(payload) {
+        const payloadString = JSON.stringify(payload);
+        const sizeInMB = payloadString.length / (1024 * 1024);
+        if (sizeInMB > MAX_PAYLOAD_SIZE_MB) {
+            return { valid: false, error: `Payload size ${sizeInMB.toFixed(2)}MB exceeds maximum limit of ${MAX_PAYLOAD_SIZE_MB}MB` };
         }
-        catch (error) {
-            reject(error);
-        }
-        finally {
-            this.activeRequests--;
-            this.processQueue(); // Process next item in queue
-        }
+        return { valid: true };
     }
     /**
      * Validate token limits before making API call using tiktoken
@@ -174,6 +245,9 @@ class HedgiOpenAI {
             agentCosts.push(costInfo);
         }
         // Log usage metrics and payload preview (no raw data/PII)
+        const safeKeys = Object.keys(payloadPreview)
+            .filter(key => !['ssn', 'tax_id', 'ein', 'bank_account', 'routing', 'email', 'phone', 'address'].includes(key.toLowerCase()))
+            .slice(0, 5);
         logger_1.loggerInstance.info('Cost tracking', {
             agent,
             timestamp: new Date().toISOString(),
@@ -181,17 +255,22 @@ class HedgiOpenAI {
             tokens: costInfo.token_usage,
             payload_preview: {
                 row_count: this.getRowCount(payloadPreview),
-                first_keys: Object.keys(payloadPreview).slice(0, 5),
+                first_keys: safeKeys,
                 data_types: this.getDataTypes(payloadPreview),
             },
         });
     }
     /**
-     * Get row count from payload for logging
+     * Get sanitized row count from payload for logging (no PII)
      */
     getRowCount(payload) {
         const counts = {};
+        const sensitiveKeys = ['ssn', 'tax_id', 'ein', 'bank_account', 'routing', 'email', 'phone', 'address'];
         for (const [key, value] of Object.entries(payload)) {
+            // Skip sensitive fields
+            if (sensitiveKeys.includes(key.toLowerCase())) {
+                continue;
+            }
             if (Array.isArray(value)) {
                 counts[key] = value.length;
             }
@@ -202,11 +281,16 @@ class HedgiOpenAI {
         return counts;
     }
     /**
-     * Get data types from payload for logging
+     * Get sanitized data types from payload for logging (no PII)
      */
     getDataTypes(payload) {
         const types = {};
+        const sensitiveKeys = ['ssn', 'tax_id', 'ein', 'bank_account', 'routing', 'email', 'phone', 'address'];
         for (const [key, value] of Object.entries(payload)) {
+            // Skip sensitive fields
+            if (sensitiveKeys.includes(key.toLowerCase())) {
+                continue;
+            }
             if (Array.isArray(value)) {
                 types[key] = `array[${value.length}]`;
             }
@@ -238,11 +322,11 @@ class HedgiOpenAI {
         };
     }
     /**
-     * Generate cache key for request
+     * Generate cache key for request using SHA-256
      */
     generateCacheKey(agent, systemPrompt, userPrompt) {
         const content = `${agent}:${systemPrompt}:${userPrompt}`;
-        return Buffer.from(content).toString('base64').slice(0, 32);
+        return (0, crypto_1.createHash)('sha256').update(content).digest('hex').substring(0, 32);
     }
     /**
      * Check if cached response is still valid
@@ -251,7 +335,7 @@ class HedgiOpenAI {
         const cached = this.responseCache.get(cacheKey);
         if (!cached)
             return null;
-        const isExpired = Date.now() - cached.timestamp > this.CACHE_TTL_MS;
+        const isExpired = Date.now() - cached.timestamp > CACHE_TTL_MS;
         if (isExpired) {
             this.responseCache.delete(cacheKey);
             return null;
@@ -265,7 +349,14 @@ class HedgiOpenAI {
         const startTime = Date.now();
         // Check circuit breaker first
         if (this.isCircuitBreakerOpen()) {
-            throw new Error('Circuit breaker is open - OpenAI service is currently unavailable');
+            throw new CircuitBreakerError();
+        }
+        // Validate payload size limits
+        const payloadSizeValidation = this.validatePayloadSize(payload);
+        if (!payloadSizeValidation.valid) {
+            const payloadString = JSON.stringify(payload);
+            const sizeInMB = payloadString.length / (1024 * 1024);
+            throw new PayloadSizeError(payloadSizeValidation.error, sizeInMB, MAX_PAYLOAD_SIZE_MB);
         }
         // Check cache first
         const cacheKey = this.generateCacheKey(agent, systemPrompt, userPrompt);
@@ -277,7 +368,7 @@ class HedgiOpenAI {
         // Validate token limits using tiktoken
         const tokenValidation = this.validateTokenLimits(systemPrompt, userPrompt);
         if (!tokenValidation.valid) {
-            throw new Error(`Token validation failed: ${tokenValidation.error}`);
+            throw new TokenLimitError(tokenValidation.error, tokenValidation.promptTokens, MAX_PROMPT_TOKENS);
         }
         let lastError = null;
         // Execute with concurrency control
@@ -393,28 +484,52 @@ class HedgiOpenAI {
         };
     }
     /**
-     * Clean up memory by clearing old cache entries
+     * Check memory usage and trigger cleanup if needed
+     */
+    checkMemoryPressure() {
+        try {
+            const usage = process.memoryUsage();
+            const usagePercent = (usage.heapUsed / usage.heapTotal) * 100;
+            return usagePercent > MAX_MEMORY_USAGE_PERCENT;
+        }
+        catch (error) {
+            logger_1.loggerInstance.error('Failed to check memory usage:', error instanceof Error ? error.message : String(error));
+            return false;
+        }
+    }
+    /**
+     * Clean up memory by clearing old cache entries and monitoring pressure
      */
     cleanupMemory() {
         const now = Date.now();
         const cacheSize = this.responseCache.size;
         const costTrackerSize = this.costTracker.size;
-        // Clean cache entries older than 30 minutes
-        for (const [key, value] of this.responseCache.entries()) {
-            if (now - value.timestamp > 30 * 60 * 1000) {
-                this.responseCache.delete(key);
+        let cacheCleaned = 0;
+        let costDataRetained = 0;
+        try {
+            // Clean cache entries older than 30 minutes
+            for (const [key, value] of this.responseCache.entries()) {
+                if (now - value.timestamp > CACHE_TTL_MS) {
+                    this.responseCache.delete(key);
+                    cacheCleaned++;
+                }
             }
-        }
-        // Clean old cost tracking data (keep last 1000 entries per agent)
-        for (const [agent, costs] of this.costTracker.entries()) {
-            if (costs.length > 1000) {
-                this.costTracker.set(agent, costs.slice(-1000));
+            // Clean old cost tracking data (keep last 1000 entries per agent)
+            for (const [agent, costs] of this.costTracker.entries()) {
+                if (costs.length > 1000) {
+                    this.costTracker.set(agent, costs.slice(-1000));
+                    costDataRetained += costs.length - 1000;
+                }
             }
+            logger_1.loggerInstance.info('Memory cleanup completed', {
+                cache_cleaned: cacheCleaned,
+                cost_data_retained: costDataRetained,
+                memory_pressure: this.checkMemoryPressure(),
+            });
         }
-        logger_1.loggerInstance.info('Memory cleanup completed', {
-            cache_cleaned: cacheSize - this.responseCache.size,
-            cost_data_retained: costTrackerSize - this.costTracker.size,
-        });
+        catch (error) {
+            logger_1.loggerInstance.error('Memory cleanup failed:', error instanceof Error ? error.message : String(error));
+        }
     }
     prunePayload(payload) {
         const pruned = { ...payload };
@@ -426,7 +541,7 @@ class HedgiOpenAI {
                 const bScore = b?.materiality_score || 0;
                 return bScore - aScore;
             })
-                .slice(0, 1500);
+                .slice(0, MAX_TRANSACTIONS);
         }
         // Remove any PII or sensitive data that might have been included
         const sensitiveKeys = ['ssn', 'tax_id', 'ein', 'bank_account', 'routing'];

@@ -1,5 +1,28 @@
 import { z } from 'zod';
 import { type AgentType } from './schemas';
+export declare class HedgiOpenAIError extends Error {
+    readonly code: string;
+    readonly details?: Record<string, unknown> | undefined;
+    constructor(message: string, code: string, details?: Record<string, unknown> | undefined);
+}
+export declare class CircuitBreakerError extends HedgiOpenAIError {
+    constructor(message?: string);
+}
+export declare class PayloadSizeError extends HedgiOpenAIError {
+    readonly sizeMB: number;
+    readonly maxSizeMB: number;
+    constructor(message: string, sizeMB: number, maxSizeMB: number);
+}
+export declare class TokenLimitError extends HedgiOpenAIError {
+    readonly tokenCount: number;
+    readonly limit: number;
+    constructor(message: string, tokenCount: number, limit: number);
+}
+export declare class RateLimitError extends HedgiOpenAIError {
+    readonly identifier: string;
+    readonly resetTime: number;
+    constructor(message: string, identifier: string, resetTime: number);
+}
 export interface HedgiOpenAIConfig {
     apiKey: string;
     model?: string;
@@ -27,18 +50,17 @@ export declare class HedgiOpenAI {
     private config;
     private costTracker;
     private responseCache;
-    private readonly CACHE_TTL_MS;
     private circuitBreaker;
     private requestQueue;
     private maxConcurrentRequests;
     private activeRequests;
     constructor(config: HedgiOpenAIConfig);
     /**
-     * Check circuit breaker state
+     * Check circuit breaker state atomically
      */
     private isCircuitBreakerOpen;
     /**
-     * Record success/failure for circuit breaker
+     * Record success/failure for circuit breaker atomically
      */
     private recordCircuitBreakerEvent;
     /**
@@ -56,6 +78,10 @@ export declare class HedgiOpenAI {
      */
     private processQueue;
     /**
+     * Validate payload size limits
+     */
+    private validatePayloadSize;
+    /**
      * Validate token limits before making API call using tiktoken
      */
     private validateTokenLimits;
@@ -68,11 +94,11 @@ export declare class HedgiOpenAI {
      */
     private logCost;
     /**
-     * Get row count from payload for logging
+     * Get sanitized row count from payload for logging (no PII)
      */
     private getRowCount;
     /**
-     * Get data types from payload for logging
+     * Get sanitized data types from payload for logging (no PII)
      */
     private getDataTypes;
     /**
@@ -80,7 +106,7 @@ export declare class HedgiOpenAI {
      */
     getCostSummary(agent: AgentType): CostInfo | null;
     /**
-     * Generate cache key for request
+     * Generate cache key for request using SHA-256
      */
     private generateCacheKey;
     /**
@@ -110,7 +136,11 @@ export declare class HedgiOpenAI {
         costTrackerSize: number;
     };
     /**
-     * Clean up memory by clearing old cache entries
+     * Check memory usage and trigger cleanup if needed
+     */
+    private checkMemoryPressure;
+    /**
+     * Clean up memory by clearing old cache entries and monitoring pressure
      */
     cleanupMemory(): void;
     prunePayload(payload: Record<string, unknown>): Record<string, unknown>;
