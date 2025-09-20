@@ -31,6 +31,13 @@ export declare class TokenCounter {
         content: string;
     }>, model?: string): Promise<number>;
     /**
+     * Count tokens for a complete conversation (sync version for backward compatibility)
+     */
+    countConversationTokensSync(messages: Array<{
+        role: string;
+        content: string;
+    }>, model?: string): number;
+    /**
      * Count tokens for system and user prompts separately (async version)
      */
     countPromptTokens(systemPrompt: string, userPrompt: string, model?: string): Promise<TokenCountResult>;

@@ -1,9 +1,13 @@
-import { createHash } from 'crypto';
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { loggerInstance as logger } from './logger';
 import { type AgentType, type HedgiResponse } from './schemas';
 import { tokenCounter } from './token-counter';
+import { CircuitBreaker, CircuitState } from './circuit-breaker';
+import { RequestQueue } from './request-queue';
+import { ResponseCache } from './response-cache';
+import { CostTracker, type CostInfo, type TokenUsage } from './cost-tracker';
 
 // Constants
 const MAX_PROMPT_TOKENS = 12000;
@@ -71,69 +75,19 @@ export interface HedgiOpenAIConfig {
   enableCostLogging?: boolean;
 }
 
-export interface TokenUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
-}
-
-export interface CostInfo {
-  prompt_cost: number;
-  completion_cost: number;
-  total_cost: number;
-  token_usage: TokenUsage;
-}
-
-// Circuit breaker states with atomic transitions
-enum CircuitState {
-  CLOSED = 'closed',      // Normal operation
-  OPEN = 'open',          // Failing, reject requests
-  HALF_OPEN = 'half-open' // Testing if service recovered
-}
-
-interface CircuitBreakerState {
-  state: CircuitState;
-  failureCount: number;
-  lastFailureTime: number;
-  nextAttemptTime: number;
-  lastStateChange: number; // For atomic transitions
-}
+// Re-export types from modules for backward compatibility
+export { type TokenUsage, type CostInfo } from './cost-tracker';
+export { CircuitState } from './circuit-breaker';
 
 export class HedgiOpenAI {
   private client: OpenAI;
   private config: Required<HedgiOpenAIConfig>;
-  private costTracker: Map<string, CostInfo[]> = new Map();
-  private responseCache: Map<
-    string,
-    { response: HedgiResponse; timestamp: number }
-  > = new Map();
 
-  // Circuit breaker state with atomic transitions and caching
-  private circuitBreaker: CircuitBreakerState = {
-    state: CircuitState.CLOSED,
-    failureCount: 0,
-    lastFailureTime: 0,
-    nextAttemptTime: 0,
-    lastStateChange: Date.now(),
-  };
-
-  // Circuit breaker state caching
-  private circuitBreakerCache: {
-    state: CircuitState;
-    isOpen: boolean;
-    lastCheckTime: number;
-    cacheTimeout: number;
-  } = {
-      state: CircuitState.CLOSED,
-      isOpen: false,
-      lastCheckTime: 0,
-      cacheTimeout: 1000, // Cache for 1 second
-    };
-
-  // Memory management
-  private requestQueue: Array<{ resolve: Function; reject: Function; request: any }> = [];
-  private maxConcurrentRequests = 10;
-  private activeRequests = 0;
+  // Modules for separation of concerns
+  private circuitBreaker: CircuitBreaker;
+  private requestQueue: RequestQueue;
+  private responseCache: ResponseCache;
+  private costTracker: CostTracker;
 
   constructor(config: HedgiOpenAIConfig) {
     // Validate API key
@@ -154,101 +108,47 @@ export class HedgiOpenAI {
       apiKey: this.config.apiKey,
     });
 
+    // Initialize modules
+    this.circuitBreaker = new CircuitBreaker({
+      failureThreshold: CIRCUIT_BREAKER_THRESHOLD,
+      timeoutMs: CIRCUIT_BREAKER_TIMEOUT_MS,
+      cacheTimeout: 1000,
+    });
+
+    this.requestQueue = new RequestQueue({
+      maxConcurrentRequests: MAX_CONCURRENT_REQUESTS,
+    });
+
+    this.responseCache = new ResponseCache({
+      ttlMs: CACHE_TTL_MS,
+      maxSize: 100, // Maximum 100 cached responses
+    });
+
+    this.costTracker = new CostTracker({
+      enableCostLogging: this.config.enableCostLogging,
+      costPer1KPromptTokens: COST_PER_1K_PROMPT_TOKENS,
+      costPer1KCompletionTokens: COST_PER_1K_COMPLETION_TOKENS,
+      maxEntriesPerAgent: 1000,
+    });
+
     // Schedule memory cleanup every 10 minutes
     setInterval(() => {
       this.cleanupMemory();
-    }, 10 * 60 * 1000);
+    }, MEMORY_CLEANUP_INTERVAL_MS);
   }
 
   /**
-   * Check circuit breaker state with conditional caching
+   * Check circuit breaker state
    */
   private isCircuitBreakerOpen(): boolean {
-    const now = Date.now();
-
-    // Check cache first if still valid
-    if (now - this.circuitBreakerCache.lastCheckTime < this.circuitBreakerCache.cacheTimeout) {
-      return this.circuitBreakerCache.isOpen;
-    }
-
-    const currentState = this.circuitBreaker.state;
-
-    switch (currentState) {
-      case CircuitState.CLOSED:
-        // Update cache
-        this.circuitBreakerCache.state = CircuitState.CLOSED;
-        this.circuitBreakerCache.isOpen = false;
-        this.circuitBreakerCache.lastCheckTime = now;
-        return false;
-
-      case CircuitState.OPEN:
-        if (now >= this.circuitBreaker.nextAttemptTime) {
-          // Atomically transition to HALF_OPEN
-          if (this.circuitBreaker.state === CircuitState.OPEN) {
-            this.circuitBreaker.state = CircuitState.HALF_OPEN;
-            this.circuitBreaker.lastStateChange = now;
-          }
-          // Update cache
-          this.circuitBreakerCache.state = CircuitState.HALF_OPEN;
-          this.circuitBreakerCache.isOpen = false;
-          this.circuitBreakerCache.lastCheckTime = now;
-          return false;
-        }
-        // Update cache
-        this.circuitBreakerCache.state = CircuitState.OPEN;
-        this.circuitBreakerCache.isOpen = true;
-        this.circuitBreakerCache.lastCheckTime = now;
-        return true;
-
-      case CircuitState.HALF_OPEN:
-        // Update cache
-        this.circuitBreakerCache.state = CircuitState.HALF_OPEN;
-        this.circuitBreakerCache.isOpen = false;
-        this.circuitBreakerCache.lastCheckTime = now;
-        return false;
-
-      default:
-        // Update cache
-        this.circuitBreakerCache.state = CircuitState.CLOSED;
-        this.circuitBreakerCache.isOpen = false;
-        this.circuitBreakerCache.lastCheckTime = now;
-        return false;
-    }
+    return this.circuitBreaker.isOpen();
   }
 
   /**
-   * Record success/failure for circuit breaker atomically and update cache
+   * Record success/failure for circuit breaker
    */
   private recordCircuitBreakerEvent(success: boolean): void {
-    const now = Date.now();
-
-    if (success) {
-      // Atomically reset failure count and transition from HALF_OPEN to CLOSED
-      this.circuitBreaker.failureCount = 0;
-      if (this.circuitBreaker.state === CircuitState.HALF_OPEN) {
-        this.circuitBreaker.state = CircuitState.CLOSED;
-        this.circuitBreaker.lastStateChange = now;
-        // Update cache
-        this.circuitBreakerCache.state = CircuitState.CLOSED;
-        this.circuitBreakerCache.isOpen = false;
-        this.circuitBreakerCache.lastCheckTime = now;
-      }
-    } else {
-      this.circuitBreaker.failureCount++;
-      this.circuitBreaker.lastFailureTime = now;
-
-      // Atomically transition to OPEN if threshold reached
-      if (this.circuitBreaker.failureCount >= CIRCUIT_BREAKER_THRESHOLD &&
-        this.circuitBreaker.state !== CircuitState.OPEN) {
-        this.circuitBreaker.state = CircuitState.OPEN;
-        this.circuitBreaker.nextAttemptTime = now + CIRCUIT_BREAKER_TIMEOUT_MS;
-        this.circuitBreaker.lastStateChange = now;
-        // Update cache
-        this.circuitBreakerCache.state = CircuitState.OPEN;
-        this.circuitBreakerCache.isOpen = true;
-        this.circuitBreakerCache.lastCheckTime = now;
-      }
-    }
+    this.circuitBreaker.recordEvent(success);
   }
 
   /**
@@ -262,13 +162,7 @@ export class HedgiOpenAI {
    * Execute request with concurrency control
    */
   private async executeWithConcurrencyControl<T>(requestFn: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-      this.requestQueue.push({ resolve, reject, request: requestFn });
-
-      if (this.activeRequests < this.maxConcurrentRequests) {
-        this.processQueue();
-      }
-    });
+    return this.requestQueue.executeWithConcurrencyControl(requestFn);
   }
 
   /**
@@ -276,22 +170,6 @@ export class HedgiOpenAI {
   /**
    * Process the request queue
    */
-  private async processQueue(): Promise<void> {
-    // Iterative processing to prevent recursion
-    while (this.activeRequests < this.maxConcurrentRequests && this.requestQueue.length > 0) {
-      this.activeRequests++;
-      const { resolve, reject, request } = this.requestQueue.shift()!;
-
-      try {
-        const result = await request();
-        resolve(result);
-      } catch (error) {
-        reject(error);
-      } finally {
-        this.activeRequests--;
-      }
-    }
-  }
 
   /**
    * Validate payload size limits
@@ -327,17 +205,7 @@ export class HedgiOpenAI {
    * Calculate cost for token usage
    */
   private calculateCost(tokenUsage: TokenUsage): CostInfo {
-    const promptCost =
-      (tokenUsage.prompt_tokens / 1000) * COST_PER_1K_PROMPT_TOKENS;
-    const completionCost =
-      (tokenUsage.completion_tokens / 1000) * COST_PER_1K_COMPLETION_TOKENS;
-
-    return {
-      prompt_cost: promptCost,
-      completion_cost: completionCost,
-      total_cost: promptCost + completionCost,
-      token_usage: tokenUsage,
-    };
+    return this.costTracker.calculateCost(tokenUsage);
   }
 
   /**
@@ -348,33 +216,7 @@ export class HedgiOpenAI {
     costInfo: CostInfo,
     payloadPreview: Record<string, unknown>
   ): void {
-    if (!this.config.enableCostLogging) return;
-
-    // Track costs per agent
-    if (!this.costTracker.has(agent)) {
-      this.costTracker.set(agent, []);
-    }
-    const agentCosts = this.costTracker.get(agent);
-    if (agentCosts) {
-      agentCosts.push(costInfo);
-    }
-
-    // Log usage metrics and payload preview (no raw data/PII)
-    const safeKeys = Object.keys(payloadPreview)
-      .filter(key => !['ssn', 'tax_id', 'ein', 'bank_account', 'routing', 'email', 'phone', 'address'].includes(key.toLowerCase()))
-      .slice(0, 5);
-
-    logger.info('Cost tracking', {
-      agent,
-      timestamp: new Date().toISOString(),
-      cost: costInfo.total_cost,
-      tokens: costInfo.token_usage,
-      payload_preview: {
-        row_count: this.getRowCount(payloadPreview),
-        first_keys: safeKeys,
-        data_types: this.getDataTypes(payloadPreview),
-      },
-    } as any);
+    this.costTracker.logCost(agent, costInfo, payloadPreview);
   }
 
   /**
@@ -431,35 +273,7 @@ export class HedgiOpenAI {
    * Get cost summary for an agent
    */
   public getCostSummary(agent: AgentType): CostInfo | null {
-    const costs = this.costTracker.get(agent);
-    if (!costs || costs.length === 0) return null;
-
-    const totalCost = costs.reduce((sum, cost) => sum + cost.total_cost, 0);
-    const totalTokens = costs.reduce(
-      (sum, cost) => sum + cost.token_usage.total_tokens,
-      0
-    );
-    // const avgCostPerCall = totalCost / costs.length; // Unused for now
-
-    return {
-      prompt_cost: costs.reduce((sum, cost) => sum + cost.prompt_cost, 0),
-      completion_cost: costs.reduce(
-        (sum, cost) => sum + cost.completion_cost,
-        0
-      ),
-      total_cost: totalCost,
-      token_usage: {
-        prompt_tokens: costs.reduce(
-          (sum, cost) => sum + cost.token_usage.prompt_tokens,
-          0
-        ),
-        completion_tokens: costs.reduce(
-          (sum, cost) => sum + cost.token_usage.completion_tokens,
-          0
-        ),
-        total_tokens: totalTokens,
-      },
-    };
+    return this.costTracker.getCostSummary(agent);
   }
 
   /**
@@ -477,17 +291,8 @@ export class HedgiOpenAI {
   /**
    * Check if cached response is still valid
    */
-  private getCachedResponse(cacheKey: string): HedgiResponse | null {
-    const cached = this.responseCache.get(cacheKey);
-    if (!cached) return null;
-
-    const isExpired = Date.now() - cached.timestamp > CACHE_TTL_MS;
-    if (isExpired) {
-      this.responseCache.delete(cacheKey);
-      return null;
-    }
-
-    return cached.response;
+  private getCachedResponse(agent: AgentType, systemPrompt: string, userPrompt: string): HedgiResponse | null {
+    return this.responseCache.get(agent, systemPrompt, userPrompt);
   }
 
   /**
@@ -517,8 +322,7 @@ export class HedgiOpenAI {
     }
 
     // Check cache first
-    const cacheKey = this.generateCacheKey(agent, systemPrompt, userPrompt);
-    const cachedResponse = this.getCachedResponse(cacheKey);
+    const cachedResponse = this.getCachedResponse(agent, systemPrompt, userPrompt);
     if (cachedResponse) {
       logger.debug(`Cache hit for ${agent} - returning cached response`);
       return cachedResponse;
@@ -622,10 +426,7 @@ export class HedgiOpenAI {
           };
 
           // Cache the response
-          this.responseCache.set(cacheKey, {
-            response: hedgiResponse,
-            timestamp: Date.now(),
-          });
+          this.responseCache.set(agent, systemPrompt, userPrompt, hedgiResponse);
 
           return hedgiResponse as z.infer<T>;
         } catch (error) {
@@ -668,7 +469,7 @@ export class HedgiOpenAI {
     lastFailureTime: number;
     nextAttemptTime: number;
   } {
-    return { ...this.circuitBreaker };
+    return this.circuitBreaker.getState();
   }
 
   /**
@@ -680,11 +481,15 @@ export class HedgiOpenAI {
     cacheSize: number;
     costTrackerSize: number;
   } {
+    const queueStats = this.requestQueue.getStats();
+    const cacheStats = this.responseCache.getStats();
+    const costStats = this.costTracker.getStats();
+
     return {
-      activeRequests: this.activeRequests,
-      queueLength: this.requestQueue.length,
-      cacheSize: this.responseCache.size,
-      costTrackerSize: this.costTracker.size,
+      activeRequests: queueStats.activeRequests,
+      queueLength: queueStats.queueLength,
+      cacheSize: cacheStats.size,
+      costTrackerSize: costStats.totalEntries,
     };
   }
 
@@ -706,32 +511,14 @@ export class HedgiOpenAI {
    * Clean up memory by clearing old cache entries and monitoring pressure
    */
   public cleanupMemory(): void {
-    const now = Date.now();
-    const cacheSize = this.responseCache.size;
-    const costTrackerSize = this.costTracker.size;
-    let cacheCleaned = 0;
-    let costDataRetained = 0;
-
     try {
-      // Clean cache entries older than 30 minutes
-      for (const [key, value] of this.responseCache.entries()) {
-        if (now - value.timestamp > CACHE_TTL_MS) {
-          this.responseCache.delete(key);
-          cacheCleaned++;
-        }
-      }
+      // Clean cache entries
+      this.responseCache.cleanup();
 
-      // Clean old cost tracking data (keep last 1000 entries per agent)
-      for (const [agent, costs] of this.costTracker.entries()) {
-        if (costs.length > 1000) {
-          this.costTracker.set(agent, costs.slice(-1000));
-          costDataRetained += costs.length - 1000;
-        }
-      }
+      // Clean old cost tracking data
+      this.costTracker.cleanup(1000);
 
       logger.info('Memory cleanup completed', {
-        cache_cleaned: cacheCleaned,
-        cost_data_retained: costDataRetained,
         memory_pressure: this.checkMemoryPressure(),
       });
     } catch (error) {
@@ -772,7 +559,7 @@ export class HedgiOpenAI {
    * Reset cost tracking
    */
   public resetCostTracking(): void {
-    this.costTracker.clear();
+    this.costTracker.reset();
   }
 }
 

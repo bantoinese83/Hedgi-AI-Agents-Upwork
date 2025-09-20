@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { type AgentType } from './schemas';
+import { CircuitState } from './circuit-breaker';
+import { type CostInfo } from './cost-tracker';
 export declare class HedgiOpenAIError extends Error {
     readonly code: string;
     readonly details?: Record<string, unknown> | undefined;
@@ -29,39 +31,22 @@ export interface HedgiOpenAIConfig {
     maxRetries?: number;
     enableCostLogging?: boolean;
 }
-export interface TokenUsage {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-}
-export interface CostInfo {
-    prompt_cost: number;
-    completion_cost: number;
-    total_cost: number;
-    token_usage: TokenUsage;
-}
-declare enum CircuitState {
-    CLOSED = "closed",// Normal operation
-    OPEN = "open",// Failing, reject requests
-    HALF_OPEN = "half-open"
-}
+export { type TokenUsage, type CostInfo } from './cost-tracker';
+export { CircuitState } from './circuit-breaker';
 export declare class HedgiOpenAI {
     private client;
     private config;
-    private costTracker;
-    private responseCache;
     private circuitBreaker;
-    private circuitBreakerCache;
     private requestQueue;
-    private maxConcurrentRequests;
-    private activeRequests;
+    private responseCache;
+    private costTracker;
     constructor(config: HedgiOpenAIConfig);
     /**
-     * Check circuit breaker state with conditional caching
+     * Check circuit breaker state
      */
     private isCircuitBreakerOpen;
     /**
-     * Record success/failure for circuit breaker atomically and update cache
+     * Record success/failure for circuit breaker
      */
     private recordCircuitBreakerEvent;
     /**
@@ -77,7 +62,6 @@ export declare class HedgiOpenAI {
     /**
      * Process the request queue
      */
-    private processQueue;
     /**
      * Validate payload size limits
      */
@@ -151,5 +135,4 @@ export declare class HedgiOpenAI {
     resetCostTracking(): void;
 }
 export declare function createHedgiOpenAI(config: HedgiOpenAIConfig): HedgiOpenAI;
-export {};
 //# sourceMappingURL=hedgi-openai.d.ts.map

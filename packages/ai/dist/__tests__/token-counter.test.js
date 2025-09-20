@@ -12,7 +12,7 @@ describe('TokenCounter', () => {
     describe('countTokens', () => {
         it('should count tokens for simple text', () => {
             const text = 'Hello, world!';
-            const count = counter.countTokens(text);
+            const count = counter.countTokensSync(text);
             expect(count).toBeGreaterThan(0);
             expect(count).toBeLessThan(10); // Should be a small number for simple text
         });
@@ -47,7 +47,7 @@ describe('TokenCounter', () => {
             expect(count).toBeGreaterThan(0);
         });
         it('should handle empty conversation', () => {
-            const count = counter.countConversationTokens([]);
+            const count = counter.countConversationTokensSync([]);
             expect(count).toBe(2); // Just the conversation overhead
         });
     });
@@ -98,7 +98,7 @@ describe('TokenCounter', () => {
     describe('default instance', () => {
         it('should work with default tokenCounter instance', () => {
             const text = 'Hello, world!';
-            const count = token_counter_1.tokenCounter.countTokens(text);
+            const count = token_counter_1.tokenCounter.countTokensSync(text);
             expect(count).toBeGreaterThan(0);
         });
     });

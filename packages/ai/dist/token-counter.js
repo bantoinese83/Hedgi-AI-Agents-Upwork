@@ -96,6 +96,28 @@ class TokenCounter {
         }
     }
     /**
+     * Count tokens for a complete conversation (sync version for backward compatibility)
+     */
+    countConversationTokensSync(messages, model = this.DEFAULT_MODEL) {
+        try {
+            let totalTokens = 0;
+            for (const message of messages) {
+                // Add message overhead (role + content)
+                totalTokens += 4; // Every message has 4 tokens overhead
+                totalTokens += this.countTokensSync(message.content, model);
+            }
+            // Add conversation overhead
+            totalTokens += 2; // Every conversation has 2 tokens overhead
+            return totalTokens;
+        }
+        catch (error) {
+            logger_1.loggerInstance.error(`Error counting conversation tokens for model ${model}:`, error instanceof Error ? error.message : String(error));
+            // Fallback to rough estimation
+            const totalText = messages.map((m) => m.content).join(' ');
+            return Math.ceil(totalText.length / 4);
+        }
+    }
+    /**
      * Count tokens for system and user prompts separately (async version)
      */
     async countPromptTokens(systemPrompt, userPrompt, model = this.DEFAULT_MODEL) {

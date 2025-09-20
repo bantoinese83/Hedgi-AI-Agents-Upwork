@@ -129,8 +129,8 @@ describe('TokenCounter', () => {
       expect(breakdown.completionTokens).toBeGreaterThan(0);
       expect(breakdown.totalTokens).toBe(
         breakdown.systemTokens +
-          breakdown.userTokens +
-          breakdown.completionTokens
+        breakdown.userTokens +
+        breakdown.completionTokens
       );
       expect(breakdown.model).toBe('gpt-4o');
     });
