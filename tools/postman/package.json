@@ -1,0 +1,37 @@
+{
+  "name": "hedgi-ai-agents-postman",
+  "version": "1.0.0",
+  "description": "Postman collections and testing utilities for Hedgi AI Agents API",
+  "scripts": {
+    "test": "./run-tests.sh",
+    "test:verbose": "./run-tests.sh --verbose",
+    "test:ci": "./run-tests.sh --report cli,json --url http://localhost:3000",
+    "test:staging": "./run-tests.sh --url https://staging-api.hedgi.com",
+    "test:production": "./run-tests.sh --url https://api.hedgi.com",
+    "install-deps": "npm install -g newman newman-reporter-html",
+    "validate": "newman run Hedgi-AI-Agents.postman_collection.json --dry-run"
+  },
+  "devDependencies": {
+    "newman": "^6.0.0",
+    "newman-reporter-html": "^1.0.5"
+  },
+  "keywords": [
+    "postman",
+    "api-testing",
+    "hedgi",
+    "ai-agents",
+    "newman",
+    "automation"
+  ],
+  "author": "Hedgi AI Agents Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/hedgi-ai-agents.git",
+    "directory": "tools/postman"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

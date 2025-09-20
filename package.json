@@ -1,0 +1,45 @@
+{
+  "name": "hedgi-ai-agents",
+  "version": "1.0.0",
+  "description": "Hedgi AI Agents for SMB bookkeeping and tax prep",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/kill-port.js && npm run dev --prefix apps/web",
+    "dev:clean": "node scripts/kill-port.js && npm run dev --prefix apps/web",
+    "dev:setup": "node scripts/dev-setup.js",
+    "dev:ai": "node scripts/kill-port.js && npm run dev --prefix packages/ai",
+    "build": "npm run build --prefix packages/ai && npm run build --prefix apps/web",
+    "test": "npm run test --prefix packages/ai",
+    "test:api": "./scripts/test/simple-test.sh",
+    "test:api:full": "./scripts/test/test-all-apis.sh",
+    "setup:env": "./scripts/setup-env.sh",
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx --max-warnings 0",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\"",
+    "type-check": "npm run type-check --prefix packages/ai && npm run type-check --prefix apps/web",
+    "quality": "npm run type-check && npm run lint && npm run format:check",
+    "quality:fix": "npm run format && npm run lint:fix",
+    "kill-ports": "node scripts/kill-port.js",
+    "install:all": "npm install --prefix packages/ai && npm install --prefix apps/web"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.44.0",
+    "@typescript-eslint/parser": "^8.44.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-prettier": "^5.5.4",
+    "eslint-plugin-promise": "^7.2.1",
+    "prettier": "^3.6.2",
+    "turbo": "^1.10.0",
+    "typescript": "^5.0.0"
+  }
+}

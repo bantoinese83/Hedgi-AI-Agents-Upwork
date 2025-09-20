@@ -1,0 +1,600 @@
+{
+  "info": {
+    "name": "Hedgi AI Agents",
+    "description": "Comprehensive API collection for Hedgi's AI-powered financial analysis agents. This collection includes all 4 AI agents (SMB Explainer, Audit Push, Cash Flow Runway, Savings Finder) plus health monitoring and testing utilities.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": {
+      "major": 1,
+      "minor": 0,
+      "patch": 0
+    }
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "Base URL for the Hedgi AI Agents API"
+    },
+    {
+      "key": "apiVersion",
+      "value": "v1",
+      "type": "string",
+      "description": "API version"
+    },
+    {
+      "key": "timeout",
+      "value": "30000",
+      "type": "string",
+      "description": "Request timeout in milliseconds"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Monitoring",
+      "description": "Health check and system monitoring endpoints",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Get system health status, performance metrics, and rate limit information"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Test response status",
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Test response time",
+                  "pm.test('Response time is less than 1000ms', function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(1000);",
+                  "});",
+                  "",
+                  "// Test response structure",
+                  "pm.test('Response has required fields', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData).to.have.property('timestamp');",
+                  "    pm.expect(jsonData).to.have.property('uptime');",
+                  "    pm.expect(jsonData).to.have.property('performance');",
+                  "    pm.expect(jsonData).to.have.property('rateLimit');",
+                  "    pm.expect(jsonData).to.have.property('environment');",
+                  "});",
+                  "",
+                  "// Test health status",
+                  "pm.test('System is healthy', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.be.oneOf(['ok', 'healthy']);",
+                  "});",
+                  "",
+                  "// Store rate limit info for other requests",
+                  "if (pm.response.json().rateLimit) {",
+                  "    pm.collectionVariables.set('rateLimitRemaining', pm.response.json().rateLimit.remaining);",
+                  "    pm.collectionVariables.set('rateLimitReset', pm.response.json().rateLimit.resetTime);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AI Agents",
+      "description": "Core AI agent endpoints for financial analysis",
+      "item": [
+        {
+          "name": "SMB Explainer",
+          "description": "Monthly financial summaries and insights for small businesses",
+          "item": [
+            {
+              "name": "Basic Monthly Summary",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"business_name\": \"Acme Corp\",\n  \"month\": \"January\",\n  \"year\": 2024,\n  \"rollups\": {\n    \"total_income\": 50000,\n    \"total_expenses\": 35000,\n    \"net_income\": 15000,\n    \"top_categories\": [\n      {\n        \"category\": \"Revenue\",\n        \"amount\": 50000,\n        \"percentage\": 100\n      },\n      {\n        \"category\": \"Office Expenses\",\n        \"amount\": 15000,\n        \"percentage\": 30\n      },\n      {\n        \"category\": \"Marketing\",\n        \"amount\": 10000,\n        \"percentage\": 20\n      }\n    ]\n  },\n  \"exemplar_transactions\": [\n    {\n      \"id\": \"txn-001\",\n      \"date\": \"2024-01-15\",\n      \"description\": \"Client Payment - Project Alpha\",\n      \"amount\": 15000,\n      \"category\": \"Revenue\",\n      \"account\": \"Checking\",\n      \"type\": \"income\",\n      \"materiality_score\": 0.9\n    },\n    {\n      \"id\": \"txn-002\",\n      \"date\": \"2024-01-20\",\n      \"description\": \"Office Rent\",\n      \"amount\": 3000,\n      \"category\": \"Office Expenses\",\n      \"account\": \"Checking\",\n      \"type\": \"expense\",\n      \"materiality_score\": 0.8\n    }\n  ],\n  \"previous_month_comparison\": {\n    \"income_change\": 15,\n    \"expense_change\": 5,\n    \"net_change\": 25\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/ai/smb-explainer",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "ai", "smb-explainer"]
+                },
+                "description": "Generate a comprehensive monthly financial summary with insights and recommendations"
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "// Test response status",
+                      "pm.test('Status code is 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "// Test response time",
+                      "pm.test('Response time is less than 10000ms', function () {",
+                      "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+                      "});",
+                      "",
+                      "// Test response structure",
+                      "pm.test('Response has required structure', function () {",
+                      "    const jsonData = pm.response.json();",
+                      "    pm.expect(jsonData).to.have.property('success');",
+                      "    pm.expect(jsonData).to.have.property('data');",
+                      "    pm.expect(jsonData).to.have.property('metadata');",
+                      "});",
+                      "",
+                      "// Test success response",
+                      "pm.test('Request was successful', function () {",
+                      "    const jsonData = pm.response.json();",
+                      "    pm.expect(jsonData.success).to.be.true;",
+                      "});",
+                      "",
+                      "// Test data structure",
+                      "pm.test('Data has required fields', function () {",
+                      "    const jsonData = pm.response.json();",
+                      "    if (jsonData.success) {",
+                      "        pm.expect(jsonData.data).to.have.property('summary');",
+                      "        pm.expect(jsonData.data).to.have.property('key_insights');",
+                      "        pm.expect(jsonData.data).to.have.property('recommendations');",
+                      "        pm.expect(jsonData.data).to.have.property('financial_health_score');",
+                      "        pm.expect(jsonData.data.financial_health_score).to.be.a('number');",
+                      "        pm.expect(jsonData.data.financial_health_score).to.be.within(0, 100);",
+                      "    }",
+                      "});",
+                      "",
+                      "// Test metadata structure",
+                      "pm.test('Metadata has required fields', function () {",
+                      "    const jsonData = pm.response.json();",
+                      "    if (jsonData.metadata) {",
+                      "        pm.expect(jsonData.metadata).to.have.property('agent');",
+                      "        pm.expect(jsonData.metadata).to.have.property('timestamp');",
+                      "        pm.expect(jsonData.metadata).to.have.property('processing_time_ms');",
+                      "        pm.expect(jsonData.metadata).to.have.property('token_usage');",
+                      "        pm.expect(jsonData.metadata.agent).to.eql('smb-explainer');",
+                      "    }",
+                      "});",
+                      "",
+                      "// Store response data for other tests",
+                      "if (pm.response.json().success) {",
+                      "    pm.collectionVariables.set('lastSMBResponse', JSON.stringify(pm.response.json()));",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Minimal Data Test",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"business_name\": \"Test Business\",\n  \"month\": \"February\",\n  \"year\": 2024,\n  \"rollups\": {\n    \"total_income\": 10000,\n    \"total_expenses\": 8000,\n    \"net_income\": 2000,\n    \"top_categories\": [\n      {\n        \"category\": \"Revenue\",\n        \"amount\": 10000,\n        \"percentage\": 100\n      }\n    ]\n  },\n  \"exemplar_transactions\": [],\n  \"previous_month_comparison\": {\n    \"income_change\": 0,\n    \"expense_change\": 0,\n    \"net_change\": 0\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/ai/smb-explainer",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "ai", "smb-explainer"]
+                },
+                "description": "Test with minimal required data to verify API handles edge cases"
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Minimal data request succeeds', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "    const jsonData = pm.response.json();",
+                      "    pm.expect(jsonData.success).to.be.true;",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Audit Push",
+          "description": "Accounting issue detection and correction recommendations",
+          "item": [
+            {
+              "name": "Duplicate Detection",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"transactions\": [\n    {\n      \"id\": \"txn-001\",\n      \"date\": \"2024-01-15\",\n      \"description\": \"Office Supplies - Staples\",\n      \"amount\": 150.00,\n      \"category\": \"Office Supplies\",\n      \"account\": \"Checking\",\n      \"type\": \"expense\",\n      \"materiality_score\": 0.6\n    },\n    {\n      \"id\": \"txn-002\",\n      \"date\": \"2024-01-15\",\n      \"description\": \"Office Supplies - Staples\",\n      \"amount\": 150.00,\n      \"category\": \"Office Supplies\",\n      \"account\": \"Checking\",\n      \"type\": \"expense\",\n      \"materiality_score\": 0.6\n    },\n    {\n      \"id\": \"txn-003\",\n      \"date\": \"2024-01-20\",\n      \"description\": \"Uncategorized Transaction\",\n      \"amount\": 500.00,\n      \"account\": \"Checking\",\n      \"type\": \"expense\",\n      \"materiality_score\": 0.7\n    }\n  ],\n  \"existing_rules\": [\n    {\n      \"id\": \"rule-001\",\n      \"pattern\": \"Office Supplies\",\n      \"category\": \"Office Expenses\",\n      \"confidence\": 0.9\n    }\n  ],\n  \"duplicate_threshold\": 0.9,\n  \"uncategorized_threshold\": 0.1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/ai/audit-push",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "ai", "audit-push"]
+                },
+                "description": "Detect duplicates, uncategorized transactions, and propose corrections"
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Audit Push request succeeds', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "    const jsonData = pm.response.json();",
+                      "    pm.expect(jsonData.success).to.be.true;",
+                      "});",
+                      "",
+                      "pm.test('Response has audit data', function () {",
+                      "    const jsonData = pm.response.json();",
+                      "    if (jsonData.success) {",
+                      "        pm.expect(jsonData.data).to.have.property('issues');",
+                      "        pm.expect(jsonData.data).to.have.property('proposed_rules');",
+                      "        pm.expect(jsonData.data).to.have.property('journal_entries');",
+                      "        pm.expect(jsonData.data).to.have.property('total_impact');",
+                      "        pm.expect(jsonData.data.issues).to.be.an('array');",
+                      "        pm.expect(jsonData.data.proposed_rules).to.be.an('array');",
+                      "        pm.expect(jsonData.data.journal_entries).to.be.an('array');",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Cash Flow Runway",
+          "description": "Burn rate analysis and cash flow projections",
+          "item": [
+            {
+              "name": "Monthly Runway Analysis",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"current_cash\": 25000,\n  \"time_period\": {\n    \"start_date\": \"2024-01-01\",\n    \"end_date\": \"2024-12-31\"\n  },\n  \"cash_flows\": [\n    {\n      \"date\": \"2024-01-01\",\n      \"type\": \"inflow\",\n      \"amount\": 5000,\n      \"category\": \"Revenue\",\n      \"description\": \"Monthly recurring revenue\"\n    },\n    {\n      \"date\": \"2024-01-15\",\n      \"type\": \"outflow\",\n      \"amount\": 3000,\n      \"category\": \"Rent\",\n      \"description\": \"Office rent payment\"\n    },\n    {\n      \"date\": \"2024-01-30\",\n      \"type\": \"outflow\",\n      \"amount\": 2000,\n      \"category\": \"Payroll\",\n      \"description\": \"Monthly payroll\"\n    }\n  ],\n  \"recurring_patterns\": [\n    {\n      \"pattern\": \"Monthly Rent\",\n      \"amount\": 3000,\n      \"frequency\": \"monthly\",\n      \"category\": \"Rent\"\n    },\n    {\n      \"pattern\": \"Monthly Payroll\",\n      \"amount\": 2000,\n      \"frequency\": \"monthly\",\n      \"category\": \"Payroll\"\n    },\n    {\n      \"pattern\": \"Monthly Revenue\",\n      \"amount\": 5000,\n      \"frequency\": \"monthly\",\n      \"category\": \"Revenue\"\n    }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/ai/cash-flow-runway",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "ai", "cash-flow-runway"]
+                },
+                "description": "Calculate burn rate, runway projections, and cash flow analysis"
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Cash Flow Runway request succeeds', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "    const jsonData = pm.response.json();",
+                      "    pm.expect(jsonData.success).to.be.true;",
+                      "});",
+                      "",
+                      "pm.test('Response has cash flow data', function () {",
+                      "    const jsonData = pm.response.json();",
+                      "    if (jsonData.success) {",
+                      "        pm.expect(jsonData.data).to.have.property('cash_bridge');",
+                      "        pm.expect(jsonData.data).to.have.property('burn_rate');",
+                      "        pm.expect(jsonData.data).to.have.property('runway_months');",
+                      "        pm.expect(jsonData.data).to.have.property('runway_date');",
+                      "        pm.expect(jsonData.data).to.have.property('top_outflows');",
+                      "        pm.expect(jsonData.data).to.have.property('risk_factors');",
+                      "        pm.expect(jsonData.data).to.have.property('recommendations');",
+                      "        pm.expect(jsonData.data.cash_bridge).to.be.an('array');",
+                      "        pm.expect(jsonData.data.burn_rate).to.have.property('monthly');",
+                      "        pm.expect(jsonData.data.burn_rate).to.have.property('daily');",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Savings Finder",
+          "description": "Subscription cost optimization and savings identification",
+          "item": [
+            {
+              "name": "Subscription Analysis",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subscriptions\": [\n    {\n      \"id\": \"sub-001\",\n      \"name\": \"Adobe Creative Cloud\",\n      \"current_cost\": 52.99,\n      \"billing_frequency\": \"monthly\",\n      \"category\": \"Software\",\n      \"vendor\": \"Adobe\",\n      \"start_date\": \"2023-01-01\",\n      \"usage_data\": {\n        \"last_used\": \"2024-01-15\",\n        \"usage_frequency\": \"daily\",\n        \"user_count\": 3\n      }\n    },\n    {\n      \"id\": \"sub-002\",\n      \"name\": \"Slack Pro\",\n      \"current_cost\": 6.67,\n      \"billing_frequency\": \"monthly\",\n      \"category\": \"Communication\",\n      \"vendor\": \"Slack\",\n      \"start_date\": \"2023-06-01\",\n      \"usage_data\": {\n        \"last_used\": \"2024-01-20\",\n        \"usage_frequency\": \"daily\",\n        \"user_count\": 5\n      }\n    },\n    {\n      \"id\": \"sub-003\",\n      \"name\": \"Unused Tool\",\n      \"current_cost\": 29.99,\n      \"billing_frequency\": \"monthly\",\n      \"category\": \"Software\",\n      \"vendor\": \"Unknown\",\n      \"start_date\": \"2023-01-01\",\n      \"usage_data\": {\n        \"last_used\": \"2023-10-01\",\n        \"usage_frequency\": \"never\",\n        \"user_count\": 0\n      }\n    }\n  ],\n  \"historical_pricing\": [\n    {\n      \"subscription_id\": \"sub-001\",\n      \"date\": \"2023-01-01\",\n      \"cost\": 49.99,\n      \"change_percentage\": 0\n    },\n    {\n      \"subscription_id\": \"sub-001\",\n      \"date\": \"2024-01-01\",\n      \"cost\": 52.99,\n      \"change_percentage\": 6.0\n    }\n  ],\n  \"usage_data\": [\n    {\n      \"subscription_id\": \"sub-001\",\n      \"date\": \"2024-01-20\",\n      \"usage_metrics\": {\n        \"active_users\": 3,\n        \"login_frequency\": \"daily\"\n      }\n    },\n    {\n      \"subscription_id\": \"sub-002\",\n      \"date\": \"2024-01-20\",\n      \"usage_metrics\": {\n        \"active_users\": 5,\n        \"login_frequency\": \"daily\"\n      }\n    },\n    {\n      \"subscription_id\": \"sub-003\",\n      \"date\": \"2024-01-20\",\n      \"usage_metrics\": {\n        \"active_users\": 0,\n        \"login_frequency\": \"never\"\n      }\n    }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/ai/savings-finder",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "ai", "savings-finder"]
+                },
+                "description": "Analyze subscriptions for cost optimization opportunities"
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Savings Finder request succeeds', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "    const jsonData = pm.response.json();",
+                      "    pm.expect(jsonData.success).to.be.true;",
+                      "});",
+                      "",
+                      "pm.test('Response has savings data', function () {",
+                      "    const jsonData = pm.response.json();",
+                      "    if (jsonData.success) {",
+                      "        pm.expect(jsonData.data).to.have.property('flagged_subscriptions');",
+                      "        pm.expect(jsonData.data).to.have.property('total_potential_savings');",
+                      "        pm.expect(jsonData.data).to.have.property('monthly_savings');",
+                      "        pm.expect(jsonData.data).to.have.property('annual_savings');",
+                      "        pm.expect(jsonData.data).to.have.property('action_items');",
+                      "        pm.expect(jsonData.data.flagged_subscriptions).to.be.an('array');",
+                      "        pm.expect(jsonData.data.action_items).to.be.an('array');",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error Testing",
+      "description": "Test error scenarios and edge cases",
+      "item": [
+        {
+          "name": "Invalid Request Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invalid_field\": \"test\",\n  \"missing_required_fields\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/smb-explainer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "smb-explainer"]
+            },
+            "description": "Test API error handling with invalid request data"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Invalid request returns error', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+                  "});",
+                  "",
+                  "pm.test('Error response has proper structure', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('success');",
+                  "    pm.expect(jsonData).to.have.property('error');",
+                  "    pm.expect(jsonData.success).to.be.false;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rate Limit Test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_name\": \"Rate Limit Test\",\n  \"month\": \"January\",\n  \"year\": 2024,\n  \"rollups\": {\n    \"total_income\": 1000,\n    \"total_expenses\": 800,\n    \"net_income\": 200,\n    \"top_categories\": [\n      {\n        \"category\": \"Revenue\",\n        \"amount\": 1000,\n        \"percentage\": 100\n      }\n    ]\n  },\n  \"exemplar_transactions\": [],\n  \"previous_month_comparison\": {\n    \"income_change\": 0,\n    \"expense_change\": 0,\n    \"net_change\": 0\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/smb-explainer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "smb-explainer"]
+            },
+            "description": "Test rate limiting (run multiple times quickly to trigger rate limit)"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 429) {",
+                  "    pm.test('Rate limit triggered', function () {",
+                  "        pm.expect(pm.response.code).to.eql(429);",
+                  "    });",
+                  "    ",
+                  "    pm.test('Rate limit response structure', function () {",
+                  "        const jsonData = pm.response.json();",
+                  "        pm.expect(jsonData).to.have.property('error');",
+                  "        pm.expect(jsonData.error).to.include('Rate limit');",
+                  "    });",
+                  "} else {",
+                  "    pm.test('Request succeeded or other error', function () {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 400, 500]);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Performance Testing",
+      "description": "Performance and load testing scenarios",
+      "item": [
+        {
+          "name": "Concurrent Requests",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"business_name\": \"Performance Test\",\n  \"month\": \"January\",\n  \"year\": 2024,\n  \"rollups\": {\n    \"total_income\": 50000,\n    \"total_expenses\": 35000,\n    \"net_income\": 15000,\n    \"top_categories\": [\n      {\n        \"category\": \"Revenue\",\n        \"amount\": 50000,\n        \"percentage\": 100\n      }\n    ]\n  },\n  \"exemplar_transactions\": [],\n  \"previous_month_comparison\": {\n    \"income_change\": 0,\n    \"expense_change\": 0,\n    \"net_change\": 0\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/smb-explainer",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ai", "smb-explainer"]
+            },
+            "description": "Test API performance under normal load"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Response time is acceptable', function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(15000);",
+                  "});",
+                  "",
+                  "pm.test('Request succeeds', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Log performance metrics",
+                  "console.log('Response time:', pm.response.responseTime + 'ms');",
+                  "console.log('Status:', pm.response.code);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set request timeout",
+          "pm.request.timeout = parseInt(pm.collectionVariables.get('timeout'));",
+          "",
+          "// Log request start",
+          "console.log('Making request to:', pm.request.url);",
+          "console.log('Method:', pm.request.method);"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test: Check if API is accessible",
+          "pm.test('API is accessible', function () {",
+          "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 400, 422, 429, 500]);",
+          "});",
+          "",
+          "// Global test: Check response time",
+          "pm.test('Response time is reasonable', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(30000);",
+          "});",
+          "",
+          "// Global test: Check response format",
+          "pm.test('Response is JSON', function () {",
+          "    pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+          "});",
+          "",
+          "// Log response summary",
+          "console.log('Response Status:', pm.response.code);",
+          "console.log('Response Time:', pm.response.responseTime + 'ms');",
+          "console.log('Response Size:', pm.response.responseSize + ' bytes');"
+        ]
+      }
+    }
+  ]
+}
